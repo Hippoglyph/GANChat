@@ -22,6 +22,7 @@ class RawTweetExtractor():
 			self.totalTweets += 1
 
 			if tweet["lang"] == "en":
+				#Filter URLs and images
 				self.englishTweets += 1
 				self.appendTweet(tweet)
 		
@@ -34,6 +35,7 @@ class RawTweetExtractor():
 
 	def dumpTweets(self):
 		if len(self.list) > 0:
+			#Add instance id token to name
 			with open(os.path.join(pathToEnglishFiltered, str(self.fileId) + ".json"), 'w+') as file:
 				for tweet in self.list:
 					json.dump(tweet, file)
@@ -67,6 +69,7 @@ def extractRawTweets():
 							theTarFile.extract(member, tempbzFolder)
 							extractTmpbz(rte)
 	rte.dumpTweets()
+	#Write to file instead
 	print("  TotalTweets:" + rte.totalTweets)
 	print("EnglishTweets:" + rte.englishTweets)
 
