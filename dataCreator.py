@@ -32,7 +32,7 @@ class RawTweetExtractor():
 
 		text = tweet["extended_tweet"]["full_text"] if "extended_tweet" in tweet else tweet["text"]
 
-		self.list.append({"id": tweet["id"], "in_reply_to_status_id": tweet["in_reply_to_status_id"], "text": text})
+		self.list.append({"id": tweet["id"], "username": tweet["user"]["screen_name"], "in_reply_to_status_id": tweet["in_reply_to_status_id"], "text": text})
 
 		if len(self.list) >= self.numberOfTweetsPerFile:
 			self.dumpTweets()
