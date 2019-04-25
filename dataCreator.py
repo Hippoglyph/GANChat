@@ -2,11 +2,15 @@ import os
 import tarfile
 import bz2
 import json
+import unidecode
+import time
+import random
 
 pathToTweets = os.path.realpath("Tweets")
 pathToRaw = os.path.join(pathToTweets, "RawStreams")
 tempbzFolder = os.path.join(pathToTweets, "tmp")
 pathToEnglishFiltered = os.path.join(pathToTweets, "EnTweets")
+pathToError = os.path.join(pathToTweets, "Errors")
 
 class RawTweetExtractor():
 
@@ -40,7 +44,7 @@ class RawTweetExtractor():
 	def dumpTweets(self):
 		if len(self.list) > 0:
 			#Add instance id token to name
-			with open(os.path.join(pathToEnglishFiltered, "A" + str(self.fileId) + ".json"), 'w+') as file:
+			with open(os.path.join(pathToEnglishFiltered, "A" + str(self.fileId) + ".json"), 'w+', encoding="utf-8") as file:
 				for tweet in self.list:
 					json.dump(tweet, file)
 					file.write("\n")
@@ -75,12 +79,23 @@ def extractTmpbz(rte):
 		fullPath = os.path.join(tempbzFolder, file)
 		with bz2.BZ2File(fullPath, "rb") as bzFile:
 			for tweet in bzFile.readlines():
-				rte.feed(json.loads(tweet.decode("utf8")))
+				if tweet:
+					try:
+						rte.feed(json.loads(tweet.decode("utf-8", "ignore")))
+					except:
+						errorid = random.randrange(99999)
+						print("Could not proccess tweet ("+str(errorid)+")")
+						with open(os.path.join(pathToError, str(errorid)+ ".txt"), "w+", encoding="utf-8") as file:
+							file.write(json.loads(tweet.decode("utf-8", "ignore")))
 		os.remove(fullPath)
 
 def extractRawTweets():
+	start = time.time()
 	if not os.path.exists(pathToEnglishFiltered):
 		os.makedirs(pathToEnglishFiltered)
+	if os.path.exists(tempbzFolder):
+		for file in os.listdir(tempbzFolder):
+			os.remove(os.path.join(tempbzFolder, file))
 	rte = RawTweetExtractor()
 	for stream in os.listdir(pathToRaw):
 		print("Stream: " + stream)
@@ -97,6 +112,7 @@ def extractRawTweets():
 	rte.dumpTweets()
 
 	with open("RawTweetExtractorRun.txt", "w+") as file:
+		file.write("Time: " +str((time.time() - start)/60) + " minutes")
 		file.write("TotalTweets: " + str(rte.totalTweets))
 		file.write("FilteredTweets: " + str(rte.filteredTweets))
 
