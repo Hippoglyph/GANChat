@@ -22,7 +22,7 @@ class RawTweetExtractor():
 		self.list = []
 		self.instanceID = instanceID
 
-	def start(self)
+	def start(self):
 		self.extractRawTweets()
 
 	def feed(self, tweet):
@@ -84,12 +84,14 @@ class RawTweetExtractor():
 				for tweet in bzFile.readlines():
 					if tweet:
 						try:
-							self.feed(json.loads(tweet.decode("utf-8", "ignore")))
+							jsonObject = json.loads(tweet.decode("utf-8", "ignore"))
 						except:
 							errorid = random.randrange(99999)
 							print("Could not proccess tweet ("+str(errorid)+")")
 							with open(os.path.join(pathToError, str(errorid)+ ".txt"), "w+", encoding="utf-8") as file:
-								file.write(json.loads(tweet.decode("utf-8", "ignore")))
+								file.write(tweet.decode("utf-8", "ignore"))
+							continue
+						self.feed(jsonObject)
 			os.remove(fullPath)
 
 	def extractRawTweets(self):
@@ -113,7 +115,7 @@ class RawTweetExtractor():
 								self.extractTmpbz()
 		self.dumpTweets()
 
-		with open("RawTweetExtractorRun.txt", "w+") as file:
+		with open("RawTweetExtractorRun"+self.instanceID+".txt", "w+") as file:
 			file.write("Time: " +str((time.time() - start)/60) + " minutes")
 			file.write("TotalTweets: " + str(self.totalTweets))
 			file.write("FilteredTweets: " + str(self.filteredTweets))
