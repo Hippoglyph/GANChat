@@ -5,12 +5,40 @@ import json
 import unidecode
 import time
 import random
+import sys
 
 pathToTweets = os.path.realpath("Tweets")
 pathToRaw = os.path.join(pathToTweets, "RawStreams")
 tempbzFolder = os.path.join(pathToTweets, "tmp")
 pathToEnglishFiltered = os.path.join(pathToTweets, "EnTweets")
 pathToError = os.path.join(pathToTweets, "Errors")
+pathToRankFilterLists = os.path.join(pathToTweets, "rankFilter")
+rawTweetMetaFileName = "RawTweetExtractorRun"
+rankFilterMetaFileName = "rankFilterMeta"
+
+class ProgressPrint():
+
+	def __init__(self):
+		self.total = 0
+		self.lastPrecentage = 0
+		
+
+	def start(self, total):
+		self.total = total
+		self.write(0)
+
+	def done(self):
+		self.write(100)
+		print("")
+
+	def print(self, number):
+		procentage = int((100*(number/self.total)))
+		if procentage != self.lastPrecentage:
+			self.lastPrecentage = procentage
+			self.write(self.lastPrecentage)
+
+	def write(self, number):
+		print("{:>3}%".format(number),end="\r")
 
 class RawTweetExtractor():
 
@@ -115,13 +143,131 @@ class RawTweetExtractor():
 								self.extractTmpbz()
 		self.dumpTweets()
 
-		with open("RawTweetExtractorRun"+self.instanceID+".txt", "w+") as file:
-			file.write("Time: " +str((time.time() - start)/60) + " minutes")
-			file.write("TotalTweets: " + str(self.totalTweets))
-			file.write("FilteredTweets: " + str(self.filteredTweets))
+		with open(rawTweetMetaFileName+self.instanceID+".txt", "w+") as file:
+			file.write("Time: " +str((time.time() - start)/60) + " minutes\n")
+			file.write("TotalTweets: " + str(self.totalTweets)+"\n")
+			file.write("FilteredTweets: " + str(self.filteredTweets)+"\n")
+
+class rankFilteringExtractor():
+
+	def __init__(self):
+		self.replyThreshold = 20
+		self.tweetsPerFile = 1000
+		self.fileID = 0
+		self.idList = []
+		self.dictionary = {}
+		self.startTime = 0
+
+	def start(self):
+		self.startTime = time.time()
+		if not os.path.exists(pathToEnglishFiltered):
+			print("No raw filtered tweets exits")
+			return
+		if not os.path.exists(pathToRankFilterLists):
+			os.makedirs(pathToRankFilterLists)
+
+		print("Start Counting...")
+		self.countReplies()
+		print("Present checking...")
+		self.presentCheck()
+		print("Thresholding...")
+		self.removeInvalids()
+		print("Writing Result to file...")
+		self.writeResult()
+		print("Done")
+
+	def countReplies(self):
+		pp = ProgressPrint()
+		fileList = os.listdir(pathToEnglishFiltered)
+		pp.start(len(fileList))
+		fileCount = 0
+		for fileName in fileList:
+			pp.print(fileCount)
+			fileCount += 1
+			with open(os.path.join(pathToEnglishFiltered, fileName)) as file:
+				for tweet in file.readlines():
+					if tweet:
+						try:
+							jsonObject = json.loads(tweet)
+						except:
+							errorid = random.randrange(99999)
+							print("Could not proccess tweet ("+str(errorid)+")")
+							with open(os.path.join(pathToError, str(errorid)+ ".txt"), "w+", encoding="utf-8") as fileError:
+								fileError.write(tweet)
+							continue
+						self.feed(jsonObject)
+		pp.done()
+
+	def feed(self, tweet):
+		#TODO: Check quality of reply
+		if tweet["in_reply_to_status_id"]:
+			if tweet["in_reply_to_status_id"] in self.dictionary:
+				self.dictionary[tweet["in_reply_to_status_id"]]["replayCount"] += 1
+			else:
+				self.dictionary[tweet["in_reply_to_status_id"]] = {"replayCount": 1, "present": False}
+
+	def presentCheck(self):
+		pp = ProgressPrint()
+		fileList = os.listdir(pathToEnglishFiltered)
+		pp.start(len(fileList))
+		fileCount = 0
+		for fileName in fileList:
+			pp.print(fileCount)
+			fileCount += 1
+			with open(os.path.join(pathToEnglishFiltered, fileName)) as file:
+				for tweet in file.readlines():
+					if tweet:
+						try:
+							jsonObject = json.loads(tweet)
+						except:
+							errorid = random.randrange(99999)
+							print("Could not proccess tweet ("+str(errorid)+")")
+							with open(os.path.join(pathToError, str(errorid)+ ".txt"), "w+", encoding="utf-8") as fileError:
+								fileError.write(tweet)
+							continue
+						self.presentFeed(jsonObject)
+		pp.done()
+
+	def presentFeed(self, tweet):
+		if tweet["id"] in self.dictionary:
+			self.dictionary[tweet["id"]]["present"] = True
+
+	def removeInvalids(self):
+		self.dictionary = {key:self.dictionary[key]["replayCount"] for key in self.dictionary if self.dictionary[key]["present"] == True and self.dictionary[key]["replayCount"] >= self.replyThreshold}
+
+	def writeResult(self):
+		pp = ProgressPrint()
+		pp.start(len(self.dictionary))
+		keyItr = 0
+		totalReplies = 0
+		for key in self.dictionary:
+			pp.print(keyItr)
+			keyItr += 1
+			self.idList.append({"id":key,"replayCount": self.dictionary[key]})
+			totalReplies += self.dictionary[key]
+			if len(self.idList) >= self.tweetsPerFile:
+				self.dumpJson()
+		self.dumpJson()
+		pp.done()
+
+		with open(rankFilterMetaFileName+".txt", "w+") as file:
+			file.write("Time: " +str((time.time() - self.startTime)/60) + " minutes\n")
+			file.write("TotalPosts: " + str(len(self.dictionary))+"\n")
+			file.write("TotalReplies: " + str(totalReplies)+"\n")
+
+	def dumpJson(self):
+		if len(self.idList) > 0:
+			with open(os.path.join(pathToRankFilterLists, str(self.fileID) + ".json"), 'w+', encoding="utf-8") as file:
+				for tweet in self.idList:
+					json.dump(tweet, file)
+					file.write("\n")
+
+			self.fileID += 1
+			self.idList = []
 
 def main():
-	RawTweetExtractor("A").start()
+	#RawTweetExtractor("B").start()
+	rankFilteringExtractor().start()
 
 if __name__ == "__main__":
 	main()
