@@ -151,7 +151,7 @@ class RawTweetExtractor():
 class rankFilteringExtractor():
 
 	def __init__(self):
-		self.replyThreshold = 20
+		self.replyThreshold = 5
 		self.tweetsPerFile = 1000
 		self.fileID = 0
 		self.idList = []
@@ -252,6 +252,7 @@ class rankFilteringExtractor():
 
 		with open(rankFilterMetaFileName+".txt", "w+") as file:
 			file.write("Time: " +str((time.time() - self.startTime)/60) + " minutes\n")
+			file.write("ReplyThreshold: " +str(self.replyThreshold) + "\n")
 			file.write("TotalPosts: " + str(len(self.dictionary))+"\n")
 			file.write("TotalReplies: " + str(totalReplies)+"\n")
 
