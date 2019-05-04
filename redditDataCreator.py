@@ -5,39 +5,94 @@ import json
 import random
 import re
 import unidecode
+import sys
 
 pathToReddit = os.path.realpath("Reddit")
+pathToSubreddits = os.path.join(pathToReddit, "Subreddits")
+pathToDataset = os.path.join(pathToReddit, "dataset")
+pathToInstanceLogs = os.path.join(pathToReddit, "InstanceLogs")
 
 class Tracker():
 
 	def __init__(self):
 		self.throttleTarget = 550
 		self.sleepTime = 1
+		self.fileId = 0
+		self.dataPointsPerFile = 1000
+		self.dataPoints = []
+		self.startTime = time.time()
+		self.totalDataPointsAdded = 0
+		self.getInstanceId()
 		self.epochReset()
+
+	def getInstanceId(self):
+		if not os.path.exists(pathToDataset):
+			os.makedirs(pathToDataset)
+		if not os.path.exists(pathToInstanceLogs):
+			os.makedirs(pathToInstanceLogs)
+		logList = os.listdir(pathToInstanceLogs)
+		self.instanceId = len(logList)
+		with open(os.path.join(pathToInstanceLogs, str(self.instanceId)), "w") as file:
+			file.write(str(time.time()))
 
 	def epochReset(self):
 		self.epochTime = time.time()
 		self.requests = 0
+		self.sleepCounter = 0
+		self.dataPointsThisMinute = 0
 
 	def request(self, url):
 		self.throttle()
 		self.requests += 1
 		#print(url)
-		return requests.get(url)
+		r = requests.get(url)
+		try:
+			json = r.json()
+		except e:
+			print(e)
+			print(r)
+			print("Request Error")
+			sys.exit()
+		return json
 
 	def epochCheck(self):
 		if time.time() - self.epochTime >= 60:
 			print("Summary:")
+			print(" " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 			rpm = self.requests/((time.time() - self.epochTime)/60)
 			print(" "+str(int(rpm)) +str(" r/m"))
+			print(" Added " + str(self.dataPointsThisMinute) + " data points this minute")
+			dppm = self.totalDataPointsAdded/((time.time() - self.startTime)/60)
+			print(" Adding " + str(int(dppm)) + " dp/m on average")
+			if self.sleepCounter > 0:
+				print(" Slept for " + str(self.sleepCounter*self.sleepTime) + " seconds this minute")
 			self.epochReset()
 
 	def throttle(self):
 		self.epochCheck()
 		while self.requests > self.throttleTarget:
 			time.sleep(self.sleepTime)
-			print("Sleep")
+			self.sleepCounter += 1
 			self.epochCheck()
+
+	def dumpDataPoints(self):
+		if len(self.dataPoints) > 0:
+			with open(os.path.join(pathToDataset, str(self.instanceId) + "-" + str(self.fileId) + ".json"), 'w', encoding="utf-8") as file:
+				for dataPoint in self.dataPoints:
+					json.dump(dataPoint, file)
+					file.write("\n")
+
+			self.fileId += 1
+			self.dataPoints = []
+
+	def appendDataPoint(self, post, reply):
+		self.dataPoints.append({"post": post, "reply": reply})
+
+		self.dataPointsThisMinute += 1
+		self.totalDataPointsAdded += 1
+
+		if len(self.dataPoints) > self.dataPointsPerFile:
+			self.dumpDataPoints()
 
 class RedditDataCreator():
 
@@ -45,12 +100,22 @@ class RedditDataCreator():
 		self.commentsPerIteration = 500
 		self.minWordCount = 5
 		self.maxWordCount = 100
+		self.minReplys = 10
+		self.maxReplys = 30
 		self.tracker = Tracker()
-		self.subreddits = ["politics", "askmen", "askwomen", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive"]
+		self.subreddits = ["politics", "askmen", "askwomen", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science"]
 		self.replaceTokens = {"url": "xx_URL_Mention_xx"}
+		self.createFolders()
+
+	def createFolders(self):
+		if not os.path.exists(pathToReddit):
+			os.makedirs(pathToReddit)
+		if not os.path.exists(pathToSubreddits):
+			os.makedirs(pathToSubreddits)
 
 	def start(self):
-		self.startNewSubmissionPull()
+		while True:
+			self.startNewSubmissionPull()
 
 	def startNewSubmissionPull(self):
 		newSubreddit = random.choice(self.subreddits)
@@ -63,28 +128,49 @@ class RedditDataCreator():
 
 		print("Starting new pull from "+newSubreddit+" from " + (before if before else "start"))
 
-		for submission in self.getSubmissions(newSubreddit, before=before):
+		for submission in self.getSubmissions(newSubreddit,size=50, before=before):
 			if not before:
-				with open(os.path.join(pathToReddit, newSubreddit+"Start"), "w") as file:
+				with open(os.path.join(pathToSubreddits, newSubreddit+"Start"), "w") as file:
 					file.write(str(submission["created_utc"]))
 			before = submission["created_utc"]
 
 			post = self.submissionQualify(submission)
 			if post:
-				print("-")
-				print(post)
-				print("-")
+				self.createDataFromSubmission(submission, post)
 
-			with open(os.path.join(pathToReddit, newSubreddit), "w") as file:
+			with open(os.path.join(pathToSubreddits, newSubreddit), "w") as file:
 				file.write(str(before))
+
+	def createDataFromSubmission(self, submission, post):
+		rawComments = self.getTopComments(submission["id"])
+		comments = self.cleanComments(rawComments)
+		if len(comments) < self.minReplys:
+			return
+
+		if len(comments) > self.maxReplys:
+			comments = random.sample(comments, self.maxReplys)
+
+		for comment in comments:
+			self.tracker.appendDataPoint(post,comment)
+
+	def cleanComments(self, rawComments):
+		comments = []
+		for dirtyComment in rawComments:
+			if "is_submitter" in dirtyComment and dirtyComment["is_submitter"]:
+				continue
+			if dirtyComment["body"] == "[removed]" or dirtyComment["body"] == "[deleted]":
+				continue
+			reply = self.cleanFromUrls(dirtyComment["body"].lower())
+			wordCount = len(reply.split())
+			if wordCount >= self.minWordCount and wordCount <= self.maxWordCount:
+				comments.append(unidecode.unidecode(reply))
+		return comments
 
 	def submissionQualify(self, submission):
 		if "over_18" in submission and submission["over_18"]:
 			return None
-
 		if "media_only" in submission and submission["media_only"]:
 			return None
-
 		if "is_video" in submission and submission["is_video"]:
 			return None
 
@@ -92,10 +178,13 @@ class RedditDataCreator():
 
 		if "title" in submission and submission["title"]:
 			post += submission["title"]+"\n"
-		if "selftext" in submission and submission["selftext"]:
+		if "selftext" in submission and submission["selftext"] and submission["selftext"] != "[removed]" and submission["selftext"] != "[deleted]":
 			post += "\n"+submission["selftext"]+"\n"
 
 		post = self.cleanFromUrls(post.lower())
+
+		if "url" in submission and not submission["url"].startswith("https://www.reddit.com"):
+			post += self.replaceTokens["url"]+"\n"
 
 		wordCount = len(post.split())
 		if wordCount >= self.minWordCount and wordCount <= self.maxWordCount:
@@ -126,7 +215,7 @@ class RedditDataCreator():
 		return topComments
 
 
-	def getSubmissions(self, subreddit,size=500,sort="desc",sort_type="created_utc",before=None, numCommentsMin=20):
+	def getSubmissions(self, subreddit,size=500,sort="desc",sort_type="created_utc",before=None, numCommentsMin=30):
 		params = "?"
 
 		if subreddit:
@@ -143,8 +232,8 @@ class RedditDataCreator():
 			params += "&num_comments=>"+str(numCommentsMin)
 
 
-		r = self.tracker.request("https://api.pushshift.io/reddit/submission/search/"+params)
-		return r.json()["data"]
+		json = self.tracker.request("https://api.pushshift.io/reddit/submission/search/"+params)
+		return json["data"]
 
 	def getComments(self, link_id,size=500,sort="desc",sort_type="created_utc",before=None):
 		params = "?"
@@ -160,8 +249,8 @@ class RedditDataCreator():
 		if before:
 			params += "&before="+str(before)
 
-		r = self.tracker.request("https://api.pushshift.io/reddit/comment/search/"+params)
-		return r.json()["data"]
+		json = self.tracker.request("https://api.pushshift.io/reddit/comment/search/"+params)
+		return json["data"]
 
 
 def main():
