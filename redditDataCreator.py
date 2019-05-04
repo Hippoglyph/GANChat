@@ -103,6 +103,7 @@ class RedditDataCreator():
 		self.maxWordCount = 100
 		self.minReplys = 10
 		self.maxReplys = 30
+		self.hardCapTopComments = 500
 		self.tracker = Tracker()
 		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
 		self.replaceTokens = {"url": "xx_URL_Mention_xx"}
@@ -200,19 +201,22 @@ class RedditDataCreator():
 		if not link_id:
 			return []
 
-		before = None
+		after = None
 		topComments = []
 
 		while True:
-			currentComments = self.getComments(link_id, size = self.commentsPerIteration, before=before)
+			currentComments = self.getComments(link_id, size = self.commentsPerIteration, after=after)
 
 			for comment in currentComments:
 				if comment["parent_id"].startswith("t3_"):
 					topComments.append(comment)
-				before = comment["created_utc"]
+				after = comment["created_utc"]
 
 			if len(currentComments) < self.commentsPerIteration:
 				break
+
+			if len(topComments) >= self.hardCapTopComments:
+				return topComments
 
 		return topComments
 
@@ -237,7 +241,7 @@ class RedditDataCreator():
 		json = self.tracker.request("https://api.pushshift.io/reddit/submission/search/"+params)
 		return json["data"]
 
-	def getComments(self, link_id,size=500,sort="desc",sort_type="created_utc",before=None):
+	def getComments(self, link_id,size=500,sort="asc",sort_type="created_utc",after=None):
 		params = "?"
 
 		if link_id:
@@ -248,8 +252,8 @@ class RedditDataCreator():
 
 		params += "&size="+str(size)+"&sort="+sort+"&sort_type="+sort_type
 
-		if before:
-			params += "&before="+str(before)
+		if after:
+			params += "&after="+str(after)
 
 		json = self.tracker.request("https://api.pushshift.io/reddit/comment/search/"+params)
 		return json["data"]
