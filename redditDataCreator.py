@@ -18,10 +18,12 @@ class Tracker():
 		self.throttleTarget = 550
 		self.sleepTime = 1
 		self.fileId = 0
-		self.dataPointsPerFile = 1000
+		self.dataPointsPerFile = 2000
 		self.dataPoints = []
 		self.startTime = time.time()
 		self.totalDataPointsAdded = 0
+		self.totalPostsAdded = 0
+		self.postId = ""
 		self.getInstanceId()
 		self.epochReset()
 
@@ -62,6 +64,8 @@ class Tracker():
 			rpm = self.requests/((time.time() - self.epochTime)/60)
 			print(" "+str(int(rpm)) +str(" r/m"))
 			print(" Added " + str(self.dataPointsThisMinute) + " data points this minute")
+			print(" Added " + str(self.totalDataPointsAdded) + " data points this session")
+			print(" Added " + str(self.totalPostsAdded) + " posts this session")
 			dppm = self.totalDataPointsAdded/((time.time() - self.startTime)/60)
 			print(" Adding " + str(int(dppm)) + " dp/m on average")
 			if self.sleepCounter > 0:
@@ -86,8 +90,12 @@ class Tracker():
 			self.fileId += 1
 			self.dataPoints = []
 
-	def appendDataPoint(self, post, reply):
-		self.dataPoints.append({"post": post, "reply": reply})
+	def appendDataPoint(self,subId, post, reply):
+		self.dataPoints.append({"post_id": subId, "post": post, "reply": reply})
+
+		if subId != self.postId:
+			self.postId = subId
+			self.totalPostsAdded += 1
 
 		self.dataPointsThisMinute += 1
 		self.totalDataPointsAdded += 1
@@ -154,7 +162,7 @@ class RedditDataCreator():
 			comments = random.sample(comments, self.maxReplys)
 
 		for comment in comments:
-			self.tracker.appendDataPoint(post,comment)
+			self.tracker.appendDataPoint(submission["id"],post,comment)
 
 	def cleanComments(self, rawComments):
 		comments = []
