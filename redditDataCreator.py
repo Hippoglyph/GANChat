@@ -127,7 +127,7 @@ class RedditDataCreator():
 		else:
 			before = None
 
-		print("Pulling from "+newSubreddit+" before " + (before if before else "now"))
+		print("Pulling from "+newSubreddit+" before " + (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(before))) if before else time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
 		for submission in self.getSubmissions(newSubreddit,size=50, before=before):
 
