@@ -113,7 +113,7 @@ class RedditDataCreator():
 		self.maxReplys = 30
 		self.hardCapTopComments = 500
 		self.tracker = Tracker()
-		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
+		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
 		self.replaceTokens = {"url": "xx_URL_Mention_xx"}
 		self.createFolders()
 
