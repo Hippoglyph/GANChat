@@ -48,7 +48,7 @@ class Tracker():
 		r = requests.get(url)
 		try:
 			json = r.json()
-		except e:
+		except Exception as e:
 			print(e)
 			print(r)
 			print("Request Error")
@@ -121,8 +121,8 @@ class RedditDataCreator():
 	def startNewSubmissionPull(self):
 		newSubreddit = random.choice(self.subreddits)
 
-		if os.path.isfile(os.path.join(pathToReddit, newSubreddit)):
-			with open(os.path.join(pathToReddit, newSubreddit), "r") as file:
+		if os.path.isfile(os.path.join(pathToSubreddits, newSubreddit)):
+			with open(os.path.join(pathToSubreddits, newSubreddit), "r") as file:
 				before = file.read()
 		else:
 			before = None
@@ -130,17 +130,18 @@ class RedditDataCreator():
 		print("Pulling from "+newSubreddit+" before " + (before if before else "now"))
 
 		for submission in self.getSubmissions(newSubreddit,size=50, before=before):
+
 			if not before:
 				with open(os.path.join(pathToSubreddits, newSubreddit+"Start"), "w") as file:
 					file.write(str(submission["created_utc"]))
 			before = submission["created_utc"]
 
+			with open(os.path.join(pathToSubreddits, newSubreddit), "w") as file:
+				file.write(str(before))
+
 			post = self.submissionQualify(submission)
 			if post:
 				self.createDataFromSubmission(submission, post)
-
-			with open(os.path.join(pathToSubreddits, newSubreddit), "w") as file:
-				file.write(str(before))
 
 	def createDataFromSubmission(self, submission, post):
 		rawComments = self.getTopComments(submission["id"])
