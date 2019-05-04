@@ -65,7 +65,8 @@ class Tracker():
 			dppm = self.totalDataPointsAdded/((time.time() - self.startTime)/60)
 			print(" Adding " + str(int(dppm)) + " dp/m on average")
 			if self.sleepCounter > 0:
-				print(" Slept for " + str(self.sleepCounter*self.sleepTime) + " seconds this minute")
+				print(" Slept for " + str(int(self.sleepCounter*self.sleepTime)) + " seconds this minute")
+			print()
 			self.epochReset()
 
 	def throttle(self):
@@ -103,7 +104,7 @@ class RedditDataCreator():
 		self.minReplys = 10
 		self.maxReplys = 30
 		self.tracker = Tracker()
-		self.subreddits = ["politics", "askmen", "askwomen", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science"]
+		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "atheism", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
 		self.replaceTokens = {"url": "xx_URL_Mention_xx"}
 		self.createFolders()
 
@@ -126,7 +127,7 @@ class RedditDataCreator():
 		else:
 			before = None
 
-		print("Starting new pull from "+newSubreddit+" from " + (before if before else "start"))
+		print("Pulling from "+newSubreddit+" before " + (before if before else "now"))
 
 		for submission in self.getSubmissions(newSubreddit,size=50, before=before):
 			if not before:
