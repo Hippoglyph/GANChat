@@ -42,6 +42,7 @@ class Tracker():
 		self.requests = 0
 		self.sleepCounter = 0
 		self.dataPointsThisMinute = 0
+		self.postAddedThisMinute = 0
 
 	def request(self, url):
 		self.throttle()
@@ -63,12 +64,15 @@ class Tracker():
 			hoursSinceStart = (time.time() - self.startTime)/(60*60)
 			print(" " + str(int(hoursSinceStart)) + " hours since start of session")
 			rpm = self.requests/((time.time() - self.epochTime)/60)
-			print(" "+str(int(rpm)) +str(" r/m"))
+			print(" "+str(int(rpm)) +str(" req/m"))
 			print(" Added " + str(self.dataPointsThisMinute) + " data points this minute")
+			print(" Added " + str(self.postAddedThisMinute) + " posts this minute")
 			print(" Added " + str(self.totalDataPointsAdded) + " data points this session")
 			print(" Added " + str(self.totalPostsAdded) + " posts this session")
 			dppm = self.totalDataPointsAdded/((time.time() - self.startTime)/60)
-			print(" Adding " + str(int(dppm)) + " dp/m on average")
+			print(" Adding " + str(int(dppm)) + " dataPoints/m on average")
+			ppm = self.totalPostsAdded/((time.time() - self.startTime)/60)
+			print(" Adding " + str(int(ppm)) + " posts/m on average")
 			if self.sleepCounter > 0:
 				print(" Slept for " + str(int(self.sleepCounter*self.sleepTime)) + " seconds this minute")
 			print()
@@ -98,6 +102,7 @@ class Tracker():
 		if subId != self.postId:
 			self.postId = subId
 			self.totalPostsAdded += 1
+			self.postAddedThisMinute += 1
 
 		self.dataPointsThisMinute += 1
 		self.totalDataPointsAdded += 1
