@@ -59,8 +59,9 @@ class Tracker():
 
 	def epochCheck(self):
 		if time.time() - self.epochTime >= 60:
-			print("Summary:")
 			print(" " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+			hoursSinceStart = (time.time() - self.startTime)/(2*60)
+			print(" " + str(int(hoursSinceStart)) + " hours since start of session")
 			rpm = self.requests/((time.time() - self.epochTime)/60)
 			print(" "+str(int(rpm)) +str(" r/m"))
 			print(" Added " + str(self.dataPointsThisMinute) + " data points this minute")
@@ -82,6 +83,7 @@ class Tracker():
 
 	def dumpDataPoints(self):
 		if len(self.dataPoints) > 0:
+			print("Writing data points to file...")
 			with open(os.path.join(pathToDataset, str(self.instanceId) + "-" + str(self.fileId) + ".json"), 'w', encoding="utf-8") as file:
 				for dataPoint in self.dataPoints:
 					json.dump(dataPoint, file)
@@ -90,8 +92,8 @@ class Tracker():
 			self.fileId += 1
 			self.dataPoints = []
 
-	def appendDataPoint(self,subId, post, reply):
-		self.dataPoints.append({"post_id": subId, "post": post, "reply": reply})
+	def appendDataPoint(self,subId, post, reply, subreddit):
+		self.dataPoints.append({"post_id": subId, "subreddit": subreddit, "post": post, "reply": reply})
 
 		if subId != self.postId:
 			self.postId = subId
@@ -114,7 +116,7 @@ class RedditDataCreator():
 		self.hardCapTopComments = 500
 		self.tracker = Tracker()
 		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
-		self.replaceTokens = {"url": "xx_URL_Mention_xx"}
+		self.replaceTokens = {"url": "xx_url_xx", "user": "xx_user_xx", "sub": "xx_subreddit_xx"}
 		self.createFolders()
 
 	def createFolders(self):
@@ -138,8 +140,15 @@ class RedditDataCreator():
 
 		print("Pulling from "+newSubreddit+" before " + (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(before))) if before else time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
-		for submission in self.getSubmissions(newSubreddit,size=50, before=before):
+		submissions = self.getSubmissions(newSubreddit,size=50, before=before)
 
+		if len(submissions) == 0:
+			print("Subreddit: " + newSubreddit + " depleted")
+			with open(os.path.join(pathToSubreddits, newSubreddit+"End"), "w") as file:
+					file.write("Dead subreddit")
+			self.subreddits.remove(newSubreddit)
+
+		for submission in submissions:
 			if not before:
 				with open(os.path.join(pathToSubreddits, newSubreddit+"Start"), "w") as file:
 					file.write(str(submission["created_utc"]))
@@ -162,7 +171,7 @@ class RedditDataCreator():
 			comments = random.sample(comments, self.maxReplys)
 
 		for comment in comments:
-			self.tracker.appendDataPoint(submission["id"],post,comment)
+			self.tracker.appendDataPoint(submission["id"],post,comment, submission["subreddit"])
 
 	def cleanComments(self, rawComments):
 		comments = []
@@ -172,6 +181,10 @@ class RedditDataCreator():
 			if dirtyComment["body"] == "[removed]" or dirtyComment["body"] == "[deleted]":
 				continue
 			reply = self.cleanFromUrls(dirtyComment["body"].lower())
+			reply = self.removeWhitespace(reply)
+			reply = self.removeUser(reply)
+			reply = self.removeSub(reply)
+			reply = self.removeRepetedNewlines(reply)
 			wordCount = len(reply.split())
 			if wordCount >= self.minWordCount and wordCount <= self.maxWordCount:
 				comments.append(unidecode.unidecode(reply))
@@ -192,9 +205,13 @@ class RedditDataCreator():
 		if "selftext" in submission and submission["selftext"]:
 			if submission["selftext"] == "[removed]" or submission["selftext"] == "[deleted]":
 				return None
-			post += "\n"+submission["selftext"]+"\n"
+			post += submission["selftext"]+"\n"
 
 		post = self.cleanFromUrls(post.lower())
+		post = self.removeWhitespace(post)
+		post = self.removeUser(post)
+		post = self.removeSub(post)
+		post = self.removeRepetedNewlines(post)
 
 		if "url" in submission and not submission["url"].startswith("https://www.reddit.com"):
 			post += self.replaceTokens["url"]+"\n"
@@ -205,7 +222,20 @@ class RedditDataCreator():
 		return None
 
 	def cleanFromUrls(self, text):
-		return re.sub(r'https?\S+', self.replaceTokens["url"], text)
+		text = re.sub(r"https?[^\s)\]\}]+", self.replaceTokens["url"], text)
+		return re.sub(r"www.[^\s)\]\}]+", self.replaceTokens["url"], text)
+
+	def removeWhitespace(self, text):
+		return re.sub(r"[^\S\r\n]+", " ", text)
+
+	def removeUser(self, text):
+		return re.sub(r"(?<=(^|\W))\/?u\/[^\s)]+", self.replaceTokens["user"], text)
+
+	def removeSub(self, text):
+		return re.sub(r"(?<=(^|\W))\/?r\/[^\s)]+", self.replaceTokens["sub"], text)
+
+	def removeRepetedNewlines(self, text):
+		return re.sub(r"[\r\n]+", "\n", text)
 
 	def getTopComments(self, link_id):
 		if not link_id:
