@@ -186,13 +186,15 @@ class RedditDataCreator():
 				continue
 			if dirtyComment["body"] == "[removed]" or dirtyComment["body"] == "[deleted]":
 				continue
-			reply = self.cleanFromUrls(dirtyComment["body"].lower())
-			reply = self.removeWhitespace(reply)
-			reply = self.removeUser(reply)
-			reply = self.removeSub(reply)
-			reply = self.removeRepetedNewlines(reply)
+
+			reply = dirtyComment["body"]
 			wordCount = len(reply.split())
 			if wordCount >= self.minWordCount and wordCount <= self.maxWordCount:
+				reply = self.cleanFromUrls(reply.lower())
+				reply = self.removeWhitespace(reply)
+				reply = self.removeUser(reply)
+				reply = self.removeSub(reply)
+				reply = self.removeRepetedNewlines(reply)
 				comments.append(unidecode.unidecode(reply))
 		return comments
 
@@ -213,17 +215,16 @@ class RedditDataCreator():
 				return None
 			post += submission["selftext"]+"\n"
 
-		post = self.cleanFromUrls(post.lower())
-		post = self.removeWhitespace(post)
-		post = self.removeUser(post)
-		post = self.removeSub(post)
-		post = self.removeRepetedNewlines(post)
-
 		if "url" in submission and not submission["url"].startswith("https://www.reddit.com"):
 			post += self.replaceTokens["url"]+"\n"
 
 		wordCount = len(post.split())
 		if wordCount >= self.minWordCount and wordCount <= self.maxWordCount:
+			post = self.cleanFromUrls(post.lower())
+			post = self.removeWhitespace(post)
+			post = self.removeUser(post)
+			post = self.removeSub(post)
+			post = self.removeRepetedNewlines(post)
 			return unidecode.unidecode(post)
 		return None
 
