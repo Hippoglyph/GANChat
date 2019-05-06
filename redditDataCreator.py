@@ -59,8 +59,8 @@ class Tracker():
 
 	def epochCheck(self):
 		if time.time() - self.epochTime >= 60:
-			print(" " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-			hoursSinceStart = (time.time() - self.startTime)/(2*60)
+			print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+			hoursSinceStart = (time.time() - self.startTime)/(60*60)
 			print(" " + str(int(hoursSinceStart)) + " hours since start of session")
 			rpm = self.requests/((time.time() - self.epochTime)/60)
 			print(" "+str(int(rpm)) +str(" r/m"))
@@ -83,7 +83,6 @@ class Tracker():
 
 	def dumpDataPoints(self):
 		if len(self.dataPoints) > 0:
-			print("Writing data points to file...")
 			with open(os.path.join(pathToDataset, str(self.instanceId) + "-" + str(self.fileId) + ".json"), 'w', encoding="utf-8") as file:
 				for dataPoint in self.dataPoints:
 					json.dump(dataPoint, file)
@@ -91,6 +90,7 @@ class Tracker():
 
 			self.fileId += 1
 			self.dataPoints = []
+			print("Stored data points " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
 
 	def appendDataPoint(self,subId, post, reply, subreddit):
 		self.dataPoints.append({"post_id": subId, "subreddit": subreddit, "post": post, "reply": reply})
@@ -114,6 +114,7 @@ class RedditDataCreator():
 		self.minReplys = 10
 		self.maxReplys = 30
 		self.hardCapTopComments = 500
+		self.submissionsPerPull = 500
 		self.tracker = Tracker()
 		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
 		self.replaceTokens = {"url": "xx_url_xx", "user": "xx_user_xx", "sub": "xx_subreddit_xx"}
@@ -140,7 +141,7 @@ class RedditDataCreator():
 
 		print("Pulling from "+newSubreddit+" before " + (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(before))) if before else time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
-		submissions = self.getSubmissions(newSubreddit,size=50, before=before)
+		submissions = self.getSubmissions(newSubreddit,size=self.submissionsPerPull, before=before)
 
 		if len(submissions) == 0:
 			print("Subreddit: " + newSubreddit + " depleted")
@@ -223,16 +224,16 @@ class RedditDataCreator():
 
 	def cleanFromUrls(self, text):
 		text = re.sub(r"https?[^\s)\]\}]+", self.replaceTokens["url"], text)
-		return re.sub(r"www.[^\s)\]\}]+", self.replaceTokens["url"], text)
+		return re.sub(r"www\.[^\s)\]\}]+", self.replaceTokens["url"], text)
 
 	def removeWhitespace(self, text):
 		return re.sub(r"[^\S\r\n]+", " ", text)
 
 	def removeUser(self, text):
-		return re.sub(r"(?<=(^|\W))\/?u\/[^\s)]+", self.replaceTokens["user"], text)
+		return re.sub(r"(?<=\W)\/?u\/[^\s)]+", self.replaceTokens["user"], " " +text)[1:]
 
 	def removeSub(self, text):
-		return re.sub(r"(?<=(^|\W))\/?r\/[^\s)]+", self.replaceTokens["sub"], text)
+		return re.sub(r"(?<=\W)\/?r\/[^\s)]+", self.replaceTokens["sub"], " " +text)[1:]
 
 	def removeRepetedNewlines(self, text):
 		return re.sub(r"[\r\n]+", "\n", text)
