@@ -114,7 +114,7 @@ class RedditDataCreator():
 		self.minReplys = 10
 		self.maxReplys = 30
 		self.hardCapTopComments = 500
-		self.submissionsPerPull = 500
+		self.submissionsPerPull = 100
 		self.tracker = Tracker()
 		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
 		self.replaceTokens = {"url": "xx_url_xx", "user": "xx_user_xx", "sub": "xx_subreddit_xx"}
