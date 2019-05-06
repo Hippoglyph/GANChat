@@ -189,7 +189,9 @@ class RedditDataCreator():
 
 		if "title" in submission and submission["title"]:
 			post += submission["title"]+"\n"
-		if "selftext" in submission and submission["selftext"] and submission["selftext"] != "[removed]" and submission["selftext"] != "[deleted]":
+		if "selftext" in submission and submission["selftext"]:
+			if submission["selftext"] == "[removed]" or submission["selftext"] == "[deleted]":
+				return None
 			post += "\n"+submission["selftext"]+"\n"
 
 		post = self.cleanFromUrls(post.lower())
