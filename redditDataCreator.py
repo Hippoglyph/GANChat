@@ -236,10 +236,10 @@ class RedditDataCreator():
 		return re.sub(r"[^\S\r\n]+", " ", text)
 
 	def removeUser(self, text):
-		return re.sub(r"(?<=\W)\/?u\/[^\s)]+", self.replaceTokens["user"], " " +text)[1:]
+		return re.sub(r"(?<=\W)\/?u\/[^\s)\]\}]+", self.replaceTokens["user"], " " +text)[1:]
 
 	def removeSub(self, text):
-		return re.sub(r"(?<=\W)\/?r\/[^\s)]+", self.replaceTokens["sub"], " " +text)[1:]
+		return re.sub(r"(?<=\W)\/?r\/[^\s)\]\}]+", self.replaceTokens["sub"], " " +text)[1:]
 
 	def removeRepetedNewlines(self, text):
 		return re.sub(r"[\r\n]+", "\n", text)
