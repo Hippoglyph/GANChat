@@ -6,7 +6,7 @@ import random
 import re
 import sys
 
-pathToReddit = os.path.realpath("BackupRedditMulti")
+pathToReddit = os.path.realpath("RedditMulti")
 pathToDataset = os.path.join(pathToReddit, "dataset")
 pathToProcessed = os.path.join(pathToReddit, "dataPostProcessed")
 pathToTextFinal = os.path.join(pathToReddit, "datasetTextFinal")
@@ -63,8 +63,7 @@ class Processor():
 			with open(os.path.join(pathToDataset, fileName), "r") as file:
 				for dataPoint in file.readlines():
 					jsonObject = json.loads(dataPoint)
-					#TODO subreddit
-					datapoints.append({"post_id": jsonObject["post_id"], "subreddit": "UNKNOWN", "post": self.replaceText(jsonObject["post"]), "reply": self.replaceText(jsonObject["reply"])})
+					datapoints.append({"post_id": jsonObject["post_id"], "subreddit": jsonObject["subreddit"], "post": self.replaceText(jsonObject["post"]), "reply": self.replaceText(jsonObject["reply"])})
 					if jsonObject["post_id"] in postCountDict:
 						postCountDict[jsonObject["post_id"]] += 1
 					else:
@@ -123,7 +122,7 @@ class Processor():
 
 		text = re.sub(r"\d+", self.replaceTokens["number"], text) #numbers
 		
-		text = re.sub(r"xx_url_mention_xx", self.replaceTokens["url"], text) #LEGACY
+		#text = re.sub(r"xx_url_mention_xx", self.replaceTokens["url"], text) #LEGACY
 		return text
 
 	def writeAllProccessedToFile(self):
@@ -294,12 +293,38 @@ class Processor():
 						
 		pp.done()
 
+	def countSubredditRatio(self):
+		if not os.path.exists(pathToTextFinal):
+			print("No dataset")
+			return
+
+		subredditsDict = {}
+		totalDataPoints = 0
+		print("Calculating subreddit ratio")
+		pp = ProgressPrint(len(os.listdir(pathToTextFinal)))
+		for i, fileName in enumerate(os.listdir(pathToTextFinal)):
+			pp.print(i)
+			with open(os.path.join(pathToTextFinal, fileName), "r") as file:
+				for dataPoint in file.readlines():
+					jsonObject = json.loads(dataPoint)
+					totalDataPoints += 1
+					if jsonObject["subreddit"] in subredditsDict:
+						subredditsDict[jsonObject["subreddit"]] += 1
+					else:
+						subredditsDict[jsonObject["subreddit"]] = 1
+
+		for subreddit in subredditsDict:
+			print(subreddit + ": " + str(round((subredditsDict[subreddit]/totalDataPoints)*100,1)) + '%')
+
 def main():
-	#Processor().processDataset()
-	#Processor().writeAllProccessedToFile()
-	#Processor().writeSampleSplitFile()
-	#Processor().wordCountAllFiles()
-	Processor().removeAllRepliesWithUnknownTokens()
+	p = Processor()
+	#p.processDataset()
+	#p.writeAllProccessedToFile()
+	#p.writeSampleSplitFile()
+	#p.wordCountAllFiles()
+	#p.removeAllRepliesWithUnknownTokens()
+	#p.countSubredditRatio()
+
 
 if __name__ == "__main__":
 	main()

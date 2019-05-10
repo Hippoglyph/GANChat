@@ -115,13 +115,14 @@ class RedditDataCreator():
 	def __init__(self):
 		self.commentsPerIteration = 500
 		self.minWordCount = 5
-		self.maxWordCount = 100
+		self.maxWordCount = 50 #CHANGE
 		self.minReplys = 10
 		self.maxReplys = 30
 		self.hardCapTopComments = 500
-		self.submissionsPerPull = 100
+		self.submissionsPerPull = 500 #CHANGE
 		self.tracker = Tracker()
-		self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
+		#self.subreddits = ["politics", "jokes", "showerthoughts", "askreddit", "worldnews", "dadjokes", "explainlikeimfive", "lifeprotips", "nostupidquestions", "news", "science", "answers", "askscience"]
+		self.subreddits = ["askreddit"]
 		self.replaceTokens = {"url": "xx_url_xx", "user": "xx_user_xx", "sub": "xx_subreddit_xx"}
 		self.createFolders()
 
