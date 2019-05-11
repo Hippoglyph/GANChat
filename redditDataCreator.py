@@ -11,6 +11,7 @@ pathToReddit = os.path.realpath("Reddit")
 pathToSubreddits = os.path.join(pathToReddit, "Subreddits")
 pathToDataset = os.path.join(pathToReddit, "dataset")
 pathToInstanceLogs = os.path.join(pathToReddit, "InstanceLogs")
+pathToError = os.path.join(pathToReddit, "Errors")
 
 class Tracker():
 
@@ -24,6 +25,7 @@ class Tracker():
 		self.totalDataPointsAdded = 0
 		self.totalPostsAdded = 0
 		self.postId = ""
+		self.errorSleepTime = 300
 		self.getInstanceId()
 		self.epochReset()
 
@@ -48,15 +50,32 @@ class Tracker():
 		self.throttle()
 		self.requests += 1
 		#print(url)
-		r = requests.get(url)
-		try:
-			json = r.json()
-		except Exception as e:
-			print(e)
-			print(r)
-			print("Request Error")
-			sys.exit()
-		return json
+		for _ in range(5):
+			r = requests.get(url)
+			try:
+				json = r.json()
+				return json
+			except Exception as e:
+				print(e)
+				print(r)
+				print("Request Error")
+				self.logError(e,r,url)
+				time.sleep(self.errorSleepTime)
+		sys.exit(0)
+		return None
+
+	def logError(self, e, r, url):
+		if not os.path.exists(pathToError):
+			os.makedirs(pathToError)
+
+		rnd = random.randint(0,10000)
+
+		with open(os.path.join(pathToError, str(rnd)), "w") as file:
+			file.write(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '\n')
+			#file.write(e)
+			file.write(str(r) + '\n')
+			file.write(url + '\n')
+
 
 	def epochCheck(self):
 		if time.time() - self.epochTime >= 60:
