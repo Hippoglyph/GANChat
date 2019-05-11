@@ -25,7 +25,7 @@ class Tracker():
 		self.totalDataPointsAdded = 0
 		self.totalPostsAdded = 0
 		self.postId = ""
-		self.errorSleepTime = 300
+		self.errorSleepTime = 600
 		self.getInstanceId()
 		self.epochReset()
 
@@ -50,7 +50,7 @@ class Tracker():
 		self.throttle()
 		self.requests += 1
 		#print(url)
-		for _ in range(5):
+		for _ in range(6):
 			r = requests.get(url)
 			try:
 				json = r.json()
@@ -59,6 +59,8 @@ class Tracker():
 				print(e)
 				print(r)
 				print("Request Error")
+				print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+				print("Resuming in " + str(self.errorSleepTime) + " seconds (" + time.strftime("%H:%M:%S", time.localtime(time.time() + self.errorSleepTime))+ ")")
 				self.logError(e,r,url)
 				time.sleep(self.errorSleepTime)
 		sys.exit(0)
