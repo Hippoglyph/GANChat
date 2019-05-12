@@ -5,8 +5,9 @@ import json
 import random
 import re
 import sys
+from tokenProcessor import tokenProcessor
 
-pathToReddit = os.path.realpath("RedditMulti")
+pathToReddit = os.path.realpath("Reddit")
 pathToDataset = os.path.join(pathToReddit, "dataset")
 pathToProcessed = os.path.join(pathToReddit, "dataPostProcessed")
 pathToTextFinal = os.path.join(pathToReddit, "datasetTextFinal")
@@ -37,13 +38,14 @@ class ProgressPrint():
 
 class Processor():
 	def __init__(self):
-		self.replaceTokens = {"url": "xx_url_xx", "user": "xx_user_xx", "sub": "xx_subreddit_xx", "number": "xx_number_xx", "hashtag": "xx_hashtag_xx"}
-		#self.splitString = r"([\s\"\(\)\[\]\{\}\,\.\?\!\%\&\:\;\-\=\\\/\*\^]" + "".join(["|"+self.replaceTokens[key] for key in self.replaceTokens])+")"
-		self.splitString = r"([^\w']" + "".join(["|"+self.replaceTokens[key] for key in self.replaceTokens])+")"
+		self.tokenProcessor = tokenProcessor()
 		self.dataPointsPerFile = 50000
 		self.keepListName = "tokenKeepList.json"
 		self.minReplys = 10
 		self.maxReplys = 30
+		self.keepTopTokens = 30000
+		self.minLenKeep = 5
+		self.maxLenKeep = 150
 
 	def processDataset(self):
 		if not os.path.exists(pathToDataset):
@@ -58,23 +60,29 @@ class Processor():
 		print("Replacing files")
 		pp = ProgressPrint(len(os.listdir(pathToDataset)))
 
+		removedDatapoints = 0
+		storedDataPoints = 0
+
 		for i, fileName in enumerate(os.listdir(pathToDataset)):
 			pp.print(i)
 			with open(os.path.join(pathToDataset, fileName), "r") as file:
 				for dataPoint in file.readlines():
 					jsonObject = json.loads(dataPoint)
-					datapoints.append({"post_id": jsonObject["post_id"], "subreddit": jsonObject["subreddit"], "post": self.replaceText(jsonObject["post"]), "reply": self.replaceText(jsonObject["reply"])})
-					if jsonObject["post_id"] in postCountDict:
-						postCountDict[jsonObject["post_id"]] += 1
+					postText = self.tokenProcessor.replaceText(jsonObject["post"])
+					replyText = self.tokenProcessor.replaceText(jsonObject["reply"])
+					if self.isDatapointCorrectLen(postText, replyText):
+						datapoints.append({"post_id": jsonObject["post_id"], "subreddit": jsonObject["subreddit"], "post": postText, "reply": replyText})
+						if jsonObject["post_id"] in postCountDict:
+							postCountDict[jsonObject["post_id"]] += 1
+						else:
+							postCountDict[jsonObject["post_id"]] = 1
 					else:
-						postCountDict[jsonObject["post_id"]] = 1
+						removedDatapoints += 1
 		pp.done()
 		print("Storing files")
 		dataList = []
 		fileId = 0
 		pp.start(len(datapoints))
-		removedDatapoints = 0
-		storedDataPoints = 0
 		for i, datapoint in enumerate(datapoints):
 			pp.print(i)
 			if postCountDict[datapoint["post_id"]] >= self.minReplys and postCountDict[datapoint["post_id"]] <= self.maxReplys:
@@ -91,6 +99,14 @@ class Processor():
 		print("Removed " + str(removedDatapoints) + " datapoints")
 		print("Kept " + str(storedDataPoints) + " datapoints")
 
+	def isDatapointCorrectLen(self, post, reply):
+		postSplit = self.tokenProcessor.splitText(post)
+		replySplit = self.tokenProcessor.splitText(reply)
+		if len(postSplit) < self.minLenKeep or len(postSplit) > self.maxLenKeep:
+			return False
+		if len(replySplit) < self.minLenKeep or len(replySplit) > self.maxLenKeep:
+			return False
+		return True
 
 	def dumpJson(self, dataList, fileID, path):
 		if len(dataList) > 0:
@@ -98,32 +114,6 @@ class Processor():
 				for dataPoint in dataList:
 					json.dump(dataPoint, file)
 					file.write("\n")
-
-
-	def replaceText(self, text):
-		text = text.lower()
-		text = re.sub(r"https?[^\s)\]\}]+", self.replaceTokens["url"], text) #URL
-		text = re.sub(r"www\.[^\s)\]\}]+", self.replaceTokens["url"], text) #URL
-		text = re.sub(r"&amp;", "&", text) #and
-		text = re.sub(r"nbsp;", " ", text) #space
-		text = re.sub(r"lt;", "<", text) #less
-		text = re.sub(r"gt;", ">", text) #large
-		text = re.sub(r"le;", "<=", text) #lessEq
-		text = re.sub(r"ge;", ">=", text) #largeEq
-		text = re.sub(r"[^\S\r\n]+", " ", text)	#Whitespace
-		text = re.sub(r"[\r\n]+", "\n", text) #Newlines
-		text = re.sub(r"(?<=\W)\/?u\/[^\s)\]\}]+", self.replaceTokens["user"], " " +text)[1:] #User
-		text = re.sub(r"(?<=\W)\/?r\/[^\s)\]\}]+", self.replaceTokens["sub"], " " +text)[1:] #Subreddit
-		text = re.sub(r"#\w+", self.replaceTokens["hashtag"], text) #Hashtag
-
-
-		text = re.sub(r"(?<=\s)lpts?\s?\:?\-?\??\!?('s)?;?", "", " " +text)[1:] #lpt
-		text = re.sub(r"(?<=\s)eli5s?\s?\:?\-?\??\!?('s)?;?", "", " " +text)[1:] #eli5
-
-		text = re.sub(r"\d+", self.replaceTokens["number"], text) #numbers
-		
-		#text = re.sub(r"xx_url_mention_xx", self.replaceTokens["url"], text) #LEGACY
-		return text
 
 	def writeAllProccessedToFile(self):
 		if not os.path.exists(pathToProcessed):
@@ -167,20 +157,17 @@ class Processor():
 
 		with open(os.path.join(pathToReddit, "sampleSplit"), 'w', encoding="utf-8") as file:
 			for item in datapoints:
-				json.dump({"from" : item, "to": self.splitText(item)}, file)
+				json.dump({"from" : item, "to": self.tokenProcessor.splitText(item)}, file)
 				file.write("\n")
 
 		pp.done()
-
-	def splitText(self, text):
-		return list(filter(None,re.split(self.splitString,text)))
 
 	def wordCountAllFiles(self):
 		if not os.path.exists(pathToProcessed):
 			print("No dataset folder")
 			return
 
-		keepTop = 30000
+		keepTop = self.keepTopTokens
 
 		tokenMap = {}
 
@@ -193,7 +180,7 @@ class Processor():
 			with open(os.path.join(pathToProcessed, fileName), "r") as file:
 				for dataPoint in file.readlines():
 					jsonObject = json.loads(dataPoint)
-					for word in self.splitText(jsonObject["post"]) + self.splitText(jsonObject["reply"]):
+					for word in self.tokenProcessor.splitText(jsonObject["post"]) + self.tokenProcessor.splitText(jsonObject["reply"]):
 						if word in tokenMap:
 							tokenMap[word] += 1
 						else:
@@ -216,12 +203,12 @@ class Processor():
 		'''
 		with open(os.path.join(pathToReddit, self.keepListName), 'w', encoding="utf-8") as file:
 			for item in sortedList[:keepTop]:
-				json.dump({"word": item[0]}, file)
+				json.dump({"word": item[0], "count": item[1]}, file)
 				file.write("\n")
 
 		pp.done()
 
-	def removeAllRepliesWithUnknownTokens(self):
+	def produceFinalTextDataset(self):
 		if not os.path.exists(os.path.join(pathToReddit, self.keepListName)):
 			print("No keep list")
 			return
@@ -242,6 +229,7 @@ class Processor():
 		removedDatapoints = 0
 		storedDataPoints = 0
 		postsWithUnknownTokens = 0
+		repliesWithUnknownTokens = 0
 		
 		print("Reading data")
 		pp = ProgressPrint(len(os.listdir(pathToProcessed)))
@@ -250,12 +238,17 @@ class Processor():
 			with open(os.path.join(pathToProcessed, fileName), "r") as file:
 				for dataPoint in file.readlines():
 					jsonObject = json.loads(dataPoint)
-					discard = False
-					for word in self.splitText(jsonObject["reply"]):
+					replyUnkCount = 0
+					postUnkCount = 0
+					for word in self.tokenProcessor.splitText(jsonObject["reply"]):
 						if word not in tokenSet:
-							discard = True
-							break
-					if not discard:
+							replyUnkCount += 1
+					for word in self.tokenProcessor.splitText(jsonObject["post"]):
+						if word not in tokenSet:
+							postUnkCount += 1
+
+
+					if replyUnkCount <= 1 and postUnkCount <= 1:
 						datapoints.append({"post_id": jsonObject["post_id"], "subreddit": jsonObject["subreddit"], "post": jsonObject["post"], "reply": jsonObject["reply"]})
 						if jsonObject["post_id"] in postCountDict:
 							postCountDict[jsonObject["post_id"]] += 1
@@ -273,9 +266,13 @@ class Processor():
 			if postCountDict[datapoint["post_id"]] >= self.minReplys and postCountDict[datapoint["post_id"]] <= self.maxReplys:
 				dataList.append(datapoint)
 				storedDataPoints += 1
-				for word in self.splitText(datapoint["post"]):
+				for word in self.tokenProcessor.splitText(datapoint["post"]):
 					if word not in tokenSet:
 						postsWithUnknownTokens += 1
+						break
+				for word in self.tokenProcessor.splitText(datapoint["reply"]):
+					if word not in tokenSet:
+						repliesWithUnknownTokens += 1
 						break
 			else:
 				removedDatapoints += 1
@@ -290,6 +287,7 @@ class Processor():
 		print("Kept " + str(storedDataPoints) + " dataPoints")
 		print("Kept " + str(round((storedDataPoints/(storedDataPoints+removedDatapoints))*100,1)) + '%' + " of the dataset")
 		print(str(postsWithUnknownTokens) + " datapoints with unknowned tokens in post")
+		print(str(repliesWithUnknownTokens) + " datapoints with unknowned tokens in reply")
 						
 		pp.done()
 
@@ -316,13 +314,92 @@ class Processor():
 		for subreddit in subredditsDict:
 			print(subreddit + ": " + str(round((subredditsDict[subreddit]/totalDataPoints)*100,1)) + '%')
 
+	def printdatasetInfo(self):
+		if not os.path.exists(pathToTextFinal):
+			print("No dataset folder")
+			return
+		print("Printing Information")
+		print("Reading...")
+		pp = ProgressPrint(len(os.listdir(pathToTextFinal)))
+
+		tokenSet = set()
+
+		with open(os.path.join(pathToReddit, self.keepListName), "r") as keepFile:
+			for token in keepFile.readlines():
+				tokenSet.add(json.loads(token)["word"])
+
+		subredditsDict = {}
+		postIdCountDict = {}
+		wordCountDict = {}
+		wordCountDict[self.tokenProcessor.replaceTokens["unknown"]] = 0
+		totalDataPoints = 0
+		totalPosts = 0
+		postLen = 0
+		replyLen = 0
+		maxLenReply = -sys.maxsize - 1
+		minLenReply = sys.maxsize
+		maxLenPost = -sys.maxsize - 1
+		minLenPost = sys.maxsize
+		for i, fileName in enumerate(os.listdir(pathToTextFinal)):
+			pp.print(i)
+			with open(os.path.join(pathToTextFinal, fileName), "r") as file:
+				for dataPoint in file.readlines():
+					jsonObject = json.loads(dataPoint)
+
+					totalDataPoints += 1
+
+					if jsonObject["subreddit"] in subredditsDict:
+						subredditsDict[jsonObject["subreddit"]] += 1
+					else:
+						subredditsDict[jsonObject["subreddit"]] = 1
+
+					postSplit = self.tokenProcessor.splitText(jsonObject["post"])
+					replySplit = self.tokenProcessor.splitText(jsonObject["reply"])
+
+					postLen += len(postSplit)
+					replyLen += len(replySplit)
+					maxLenReply = max(len(replySplit), maxLenReply)
+					maxLenPost = max(len(postSplit), maxLenPost)
+					minLenReply = min(len(replySplit), minLenReply)
+					minLenPost = min(len(postSplit), minLenPost)
+
+					if jsonObject["post_id"] in postIdCountDict:
+						postIdCountDict[jsonObject["post_id"]] += 1
+					else:
+						postIdCountDict[jsonObject["post_id"]] = 1
+						totalPosts += 1
+
+					for word in postSplit:
+						if word in tokenSet:
+							if word in wordCountDict:
+								wordCountDict[word] += 1
+							else:
+								wordCountDict[word] = 0
+						else:
+							wordCountDict[self.tokenProcessor.replaceTokens["unknown"]] += 1
+		pp.done()
+
+		print("Total Datapoints: " + str(totalDataPoints))
+		print("Total Posts: " + str(totalPosts))
+		print("Replies per post: " + str(round((totalDataPoints/totalPosts),1)) + " avg")
+		print("Subbreddit ratio")
+		for subreddit in subredditsDict:
+			print(subreddit + ": " + str(round(100*(subredditsDict[subreddit]/totalDataPoints),1)) + '%')
+		print("Reply length: " + str(round(replyLen/totalDataPoints, 1)) + " avg")
+		print("Post length: " + str(round(postLen/totalDataPoints, 1)) + " avg")
+		print("Unknown words: " + str(wordCountDict[self.tokenProcessor.replaceTokens["unknown"]]) + " of " + str(sum(wordCountDict.values())))
+		print("Unknown words: " + str(round(100*(wordCountDict[self.tokenProcessor.replaceTokens["unknown"]]/(sum(wordCountDict.values()))),1))+ '%')
+		print("Max/min length replies: " + str(maxLenReply)+"/"+str(minLenReply))
+		print("Max/min length posts: " + str(maxLenPost)+"/"+str(minLenPost))
+
 def main():
 	p = Processor()
-	#p.processDataset()
+	p.processDataset()
 	#p.writeAllProccessedToFile()
 	#p.writeSampleSplitFile()
-	#p.wordCountAllFiles()
-	#p.removeAllRepliesWithUnknownTokens()
+	p.wordCountAllFiles()
+	p.produceFinalTextDataset()
+	p.printdatasetInfo()
 	#p.countSubredditRatio()
 
 
