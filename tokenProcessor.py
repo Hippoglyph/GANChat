@@ -1,12 +1,17 @@
 import re
 import nltk
 from nltk.tokenize.treebank import TreebankWordDetokenizer
+import os
+
+pathToReddit = os.path.realpath("Reddit")
 
 class tokenProcessor():
 	def __init__(self):
 		self.replaceTokens = {"url": "xx-url-xx", "user": "xx-user-xx", "sub": "xx-subreddit-xx", "number": " xx-number-xx ", "hashtag": "xx-hashtag-xx", "unknown": "xx-unknown-xx", "end": "xx-end-xx", "start": "xx-start-xx", "pad": "xx-pad-xx"}
 		#self.splitString = r"([\s\"\(\)\[\]\{\}\,\.\?\!\%\&\:\;\-\=\\\/\*\^]" + "".join(["|"+self.replaceTokens[key] for key in self.replaceTokens])+")"
 		#self.splitString = r"([^\w']" + "".join(["|"+self.replaceTokens[key] for key in self.replaceTokens])+")"
+
+		self.wordToIndexFileName = "tokenToIndex.json"
 
 		self.tokenToInt = None
 		self.intToToken = None
@@ -57,3 +62,17 @@ class tokenProcessor():
 		#text = re.sub(r'\s*,\s*', ', ', text)
 		#text = re.sub(r'\s*\?\s*', '? ', text)
 		return text
+
+	def initTokenMaps(self):
+		print("Initilizing token maps")
+		if not os.path.exists(os.path.join(pathToReddit, self.wordToIndexFileName)):
+			print("No token index folder")
+			return
+
+		self.tokenToInt = {}
+		self.intToToken = {}
+
+		with open(os.path.join(pathToReddit, self.wordToIndexFileName), "r") as tokenToIndexFile:
+			for token in tokenToIndexFile.readlines():
+				self.tokenToInt[token["word"]] = token["id"]
+				self.intToToken[token["id"]] = token["word"]

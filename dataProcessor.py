@@ -6,6 +6,7 @@ import random
 import re
 import sys
 from tokenProcessor import tokenProcessor
+from ProgressPrint import ProgressPrint
 
 pathToReddit = os.path.realpath("Reddit")
 pathToDataset = os.path.join(pathToReddit, "dataset")
@@ -18,41 +19,17 @@ pathToSequenceDataset = os.path.join(pathToProcess, "sequenceDataset")
 pathToSeqTrain = os.path.join(pathToSequenceDataset, "train")
 pathToSeqTest = os.path.join(pathToSequenceDataset, "test")
 
-class ProgressPrint():
-
-	def __init__(self, total):
-		self.total = 0
-		self.lastPrecentage = 0
-		self.start(total)
-
-	def start(self, total):
-		self.total = total
-		self.write(0)
-
-	def done(self):
-		self.write(100)
-		print("")
-
-	def print(self, number):
-		procentage = int((100*(number/self.total)))
-		if procentage != self.lastPrecentage:
-			self.lastPrecentage = procentage
-			self.write(self.lastPrecentage)
-
-	def write(self, number):
-		print("{:>3}%".format(number),end="\r")
-
 class Processor():
 	def __init__(self):
 		self.tokenProcessor = tokenProcessor()
 		self.dataPointsPerFile = 50000
 		self.keepListName = "tokenKeepList.json"
-		self.wordToIndexFileName = "wordToIndex.json"
+		self.wordToIndexFileName = self.tokenProcessor.wordToIndexFileName
 		self.minReplys = 10
 		self.maxReplys = 30
 		self.keepTopTokens = 30000
 		self.minLenKeep = 5
-		self.maxLenKeep = 74
+		self.maxLenKeep = 63
 		self.unkLimit = 1
 		self.testDatasetIdSize = 2000
 
@@ -60,7 +37,7 @@ class Processor():
 			os.makedirs(pathToProcess)
 
 	def processDataset(self):
-		print("Producing process dataset")
+		print("--Producing process dataset")
 		if not os.path.exists(pathToDataset):
 			print("No dataset folder")
 			return
@@ -176,7 +153,7 @@ class Processor():
 		pp.done()
 
 	def wordCountAllFiles(self):
-		print("Word count processed data")
+		print("--Word count processed data")
 		if not os.path.exists(pathToProcessed):
 			print("No dataset folder")
 			return
@@ -214,7 +191,7 @@ class Processor():
 		pp.done()
 
 	def produceFinalTextDataset(self):
-		print("Producing final text dataset")
+		print("--Producing final text dataset")
 		if not os.path.exists(os.path.join(pathToProcess, self.keepListName)):
 			print("No keep list")
 			return
@@ -324,7 +301,7 @@ class Processor():
 
 		subredditsDict = {}
 		totalDataPoints = 0
-		print("Calculating subreddit ratio")
+		print("--Calculating subreddit ratio")
 		pp = ProgressPrint(len(os.listdir(pathToTextFinal)))
 		for i, fileName in enumerate(os.listdir(pathToTextFinal)):
 			pp.print(i)
@@ -341,7 +318,7 @@ class Processor():
 			print(subreddit + ": " + str(round((subredditsDict[subreddit]/totalDataPoints)*100,1)) + '%')
 
 	def printdatasetInfo(self):
-		print("Printing Information on final text dataset")
+		print("--Printing Information on final text dataset")
 		if not os.path.exists(pathToTextFinal):
 			print("No dataset folder")
 			return
@@ -424,7 +401,7 @@ class Processor():
 			print("Max/min length posts: " + str(maxLenPost)+"/"+str(minLenPost))
 
 	def printSequenceDatasetInfo(self):
-		print("Printing Information on sequence dataset")
+		print("--Printing Information on sequence dataset")
 		if not os.path.exists(pathToSequenceDataset):
 			print("No dataset folder")
 			return
@@ -452,13 +429,13 @@ class Processor():
 						postSeq = jsonObject["post"]
 						replySeq = jsonObject["reply"]
 
-						postLen += len([i for i in postSeq if i >= 2])
-						replyLen += len([i for i in replySeq if i >= 2])
+						postLen += len([i for i in postSeq if i >= 1])
+						replyLen += len([i for i in replySeq if i >= 1])
 
 						for word in postSeq + replySeq:
-							if word >= 2:
+							if word >= 1:
 								wordCount += 1
-							if word == 2:
+							if word == 1:
 								unkCount += 1
 			pp.done()
 
@@ -469,7 +446,7 @@ class Processor():
 			print("Unknown words: " + str(round(100*(unkCount/wordCount),1))+ '%')
 
 	def createSequenceDataset(self):
-		print("Creating sequence dataset")
+		print("--Creating sequence dataset")
 		if not os.path.exists(pathToTextFinal):
 			print("No dataset folder")
 			return
@@ -508,10 +485,10 @@ class Processor():
 		wordList = sorted(wordCountDict.items(), key = lambda kv: (kv[1], kv[0]), reverse= True)[:self.keepTopTokens]
 		wordToIndex = {}
 		for i in range(len(wordList)):
-			wordToIndex[wordList[i][0]] = i+3
+			wordToIndex[wordList[i][0]] = i+2
 		wordToIndex[self.tokenProcessor.replaceTokens["pad"]] = 0
-		wordToIndex[self.tokenProcessor.replaceTokens["end"]] = 1
-		wordToIndex[self.tokenProcessor.replaceTokens["unknown"]] = 2
+		#wordToIndex[self.tokenProcessor.replaceTokens["end"]] = 1
+		wordToIndex[self.tokenProcessor.replaceTokens["unknown"]] = 1
 
 		with open(os.path.join(pathToProcess, self.wordToIndexFileName), 'w', encoding="utf-8") as file:
 			for k,v in wordToIndex.items():
@@ -567,15 +544,15 @@ class Processor():
 
 def main():
 	p = Processor()
-	#p.processDataset()
+	p.processDataset()
 	#p.writeAllProccessedToFile()
 	#p.writeSampleSplitFile()
-	#p.wordCountAllFiles()
-	#p.produceFinalTextDataset()
+	p.wordCountAllFiles()
+	p.produceFinalTextDataset()
 	p.printdatasetInfo()
 	#p.countSubredditRatio()
-	#p.createSequenceDataset()
-	#p.printSequenceDatasetInfo()
+	p.createSequenceDataset()
+	p.printSequenceDatasetInfo()
 
 
 if __name__ == "__main__":
