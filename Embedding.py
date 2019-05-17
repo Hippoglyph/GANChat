@@ -14,7 +14,8 @@ class Embedding():
 				name="EM")
 
 	def getEmbedding(self, inputIds):
-		return tf.nn.embedding_lookup(self.EM, inputIds)
+		#with tf.device('/cpu:0'):
+			return tf.nn.embedding_lookup(self.EM, inputIds)
 
 	def getParams(self):
 		return [self.EM]

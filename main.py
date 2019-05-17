@@ -12,11 +12,12 @@ class Trainer():
 		self.generator = Generator(self.embedding, self.sequence_length)
 
 	def train(self):
-		dummyInput = [[0,1,2]]
+		dummyInput = [[3,2,1],
+						[0,1,2]]
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
 			output = sess.run(
-				[self.generator.embedded_input],
+				[self.generator.encoder_final_state],
 				{self.generator.input_x: dummyInput})
 
 			print(output)
