@@ -1,86 +1,77 @@
 import tensorflow as tf
 
-class LSTM():
-	def __init__(self, input_size, hidden_size):
-		self.input_size = input_size
-		self.hidden_size = hidden_size
+def LSTM_recurrent_unit(input_size,hidden_size,params):
+	std = 0.1
+	# Weights and Bias for input and hidden tensor
+	Wi = tf.Variable(tf.random_normal([input_size, hidden_size], stddev=std))
+	Ui = tf.Variable(tf.random_normal([hidden_size, hidden_size], stddev=std))
+	bi = tf.Variable(tf.random_normal([hidden_size], stddev=std))
 
-	def init_matrix(self, shape):
-		return tf.random_normal(shape, stddev=0.1)
+	Wf = tf.Variable(tf.random_normal([input_size, hidden_size], stddev=std))
+	Uf = tf.Variable(tf.random_normal([hidden_size, hidden_size], stddev=std))
+	bf = tf.Variable(tf.random_normal([hidden_size], stddev=std))
 
-	def init_vector(self, shape):
-		return tf.zeros(shape)
+	Wog = tf.Variable(tf.random_normal([input_size, hidden_size], stddev=std))
+	Uog = tf.Variable(tf.random_normal([hidden_size, hidden_size], stddev=std))
+	bog = tf.Variable(tf.random_normal([hidden_size], stddev=std))
 
-	def create_recurrent_unit(self, params):
-		# Weights and Bias for input and hidden tensor
-		self.Wi = tf.Variable(self.init_matrix([self.input_size, self.hidden_size]))
-		self.Ui = tf.Variable(self.init_matrix([self.hidden_size, self.hidden_size]))
-		self.bi = tf.Variable(self.init_matrix([self.hidden_size]))
+	Wc = tf.Variable(tf.random_normal([input_size, hidden_size], stddev=std))
+	Uc = tf.Variable(tf.random_normal([hidden_size, hidden_size], stddev=std))
+	bc = tf.Variable(tf.random_normal([hidden_size], stddev=std))
+	params.extend([
+		Wi, Ui, bi,
+		Wf, Uf, bf,
+		Wog, Uog, bog,
+		Wc, Uc, bc])
 
-		self.Wf = tf.Variable(self.init_matrix([self.input_size, self.hidden_size]))
-		self.Uf = tf.Variable(self.init_matrix([self.hidden_size, self.hidden_size]))
-		self.bf = tf.Variable(self.init_matrix([self.hidden_size]))
+	def unit(x, hidden_memory_tm1):
+		previous_hidden_state, c_prev = tf.unstack(hidden_memory_tm1)
 
-		self.Wog = tf.Variable(self.init_matrix([self.input_size, self.hidden_size]))
-		self.Uog = tf.Variable(self.init_matrix([self.hidden_size, self.hidden_size]))
-		self.bog = tf.Variable(self.init_matrix([self.hidden_size]))
+		# Input Gate
+		i = tf.sigmoid(
+			tf.matmul(x, Wi) +
+			tf.matmul(previous_hidden_state, Ui) + bi
+		)
 
-		self.Wc = tf.Variable(self.init_matrix([self.input_size, self.hidden_size]))
-		self.Uc = tf.Variable(self.init_matrix([self.hidden_size, self.hidden_size]))
-		self.bc = tf.Variable(self.init_matrix([self.hidden_size]))
-		params.extend([
-			self.Wi, self.Ui, self.bi,
-			self.Wf, self.Uf, self.bf,
-			self.Wog, self.Uog, self.bog,
-			self.Wc, self.Uc, self.bc])
+		# Forget Gate
+		f = tf.sigmoid(
+			tf.matmul(x, Wf) +
+			tf.matmul(previous_hidden_state, Uf) + bf
+		)
 
-		def unit(x, hidden_memory_tm1):
-			previous_hidden_state, c_prev = tf.unstack(hidden_memory_tm1)
+		# Output Gate
+		o = tf.sigmoid(
+			tf.matmul(x, Wog) +
+			tf.matmul(previous_hidden_state, Uog) + bog
+		)
 
-			# Input Gate
-			i = tf.sigmoid(
-				tf.matmul(x, self.Wi) +
-				tf.matmul(previous_hidden_state, self.Ui) + self.bi
-			)
+		# New Memory Cell
+		c_ = tf.nn.tanh(
+			tf.matmul(x, Wc) +
+			tf.matmul(previous_hidden_state, Uc) + bc
+		)
 
-			# Forget Gate
-			f = tf.sigmoid(
-				tf.matmul(x, self.Wf) +
-				tf.matmul(previous_hidden_state, self.Uf) + self.bf
-			)
+		# Final Memory cell
+		c = f * c_prev + i * c_
 
-			# Output Gate
-			o = tf.sigmoid(
-				tf.matmul(x, self.Wog) +
-				tf.matmul(previous_hidden_state, self.Uog) + self.bog
-			)
+		# Current Hidden state
+		current_hidden_state = o * tf.nn.tanh(c)
 
-			# New Memory Cell
-			c_ = tf.nn.tanh(
-				tf.matmul(x, self.Wc) +
-				tf.matmul(previous_hidden_state, self.Uc) + self.bc
-			)
+		return tf.stack([current_hidden_state, c])
 
-			# Final Memory cell
-			c = f * c_prev + i * c_
+	return unit
 
-			# Current Hidden state
-			current_hidden_state = o * tf.nn.tanh(c)
+def LSTM_output_unit(input_size,hidden_size,params):
+	std = 0.1
+	Wo = tf.Variable(tf.random_normal([hidden_size, input_size], stddev=std))
+	bo = tf.Variable(tf.random_normal([input_size], stddev=std))
+	params.extend([Wo, bo])
 
-			return tf.stack([current_hidden_state, c])
+	def unit(hidden_memory_tuple):
+		hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
+		# hidden_state : batch x hidden_dim
+		logits = tf.matmul(hidden_state, Wo) + bo
+		# output = tf.nn.softmax(logits)
+		return logits
 
-		return unit
-
-	def create_output_unit(self, params):
-		self.Wo = tf.Variable(self.init_matrix([self.hidden_size, self.input_size]))
-		self.bo = tf.Variable(self.init_matrix([self.input_size]))
-		params.extend([self.Wo, self.bo])
-
-		def unit(hidden_memory_tuple):
-			hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
-			# hidden_state : batch x hidden_dim
-			logits = tf.matmul(hidden_state, self.Wo) + self.bo
-			# output = tf.nn.softmax(logits)
-			return logits
-
-		return unit
+	return unit
