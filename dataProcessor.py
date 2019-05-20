@@ -32,6 +32,7 @@ class Processor():
 		self.maxLenKeep = 63
 		self.unkLimit = 1
 		self.testDatasetIdSize = 2000
+		random.seed(1337)
 
 		if not os.path.exists(pathToProcess):
 			os.makedirs(pathToProcess)

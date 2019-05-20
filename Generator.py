@@ -1,71 +1,54 @@
 import tensorflow as tf
+from LSTM import LSTM
+from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 
 class Generator():
-	def __init__(self, embedding, sequence_length):
+	def __init__(self, embedding, sequence_length, start_token):
 		self.sequence_length = sequence_length
+		self.start_token = start_token
 		self.embedding = embedding
 		self.encoder_units = 4
+		self.decoder_units = self.encoder_units #Add noice here
+		self.params = []
 		self.buildGraph()
 
 	def buildGraph(self):
 		with tf.name_scope("generator"):
 			self.input_x = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="input_sequence")
+			self.batch_size = tf.shape(self.input_x)[0]
+			self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
+			
+			self.params.append(self.embedding.getParams())
 
 			self.embedded_input = self.embedding.getEmbedding(self.input_x)
+			#with tf.device("/cpu:0"):
+			self.embedded_input_transposed = tf.transpose(self.embedded_input, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
 
 			with tf.name_scope("encoder"):
-				self.encoder_state, self.encoder_final_state = tf.nn.dynamic_rnn(
-															tf.nn.rnn_cell.GRUCell(self.encoder_units, name="encoder_cell", kernel_initializer = tf.contrib.layers.xavier_initializer()),
-															self.embedded_input,
-															dtype=tf.float32)
 
-
-			with tf.name_scope("decoder"):
-
-				decoder_cell = LSTMCell(decoder_hidden_units)
-
-				W = tf.Variable(tf.random_uniform([decoder_hidden_units, vocab_size], -1, 1), dtype=tf.float32)
-				b = tf.Variable(tf.zeros([vocab_size]), dtype=tf.float32)
-
+				embedded_input_lt = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
+				embedded_input_lt = embedded_input_lt.unstack(self.embedded_input_transposed)
 				
-				def loop_fn_initial():
-					initial_elements_finished = (0 >= decoder_lengths)
-					initial_input = eos_step_embedded
-					initial_cell_state = encoder_final_state
-					initial_cell_output = None
-					initial_loop_state = None
-					return (initial_elements_finished, initial_input, initial_cell_state, initial_cell_output, initial_loop_state)
+				self.encoder_LSTM_creator = LSTM(self.embedding.embedding_size, self.encoder_units)
+				self.encoder_LSTM = self.encoder_LSTM_creator.create_recurrent_unit(self.params)
 
-				def loop_fn_transition(time, previous_output, previous_state, previous_loop_state):
+				self.eh0 = tf.zeros([self.batch_size, self.encoder_units])
+				self.eh0 = tf.stack([self.eh0, self.eh0])
 
-					def get_next_input():
-						output_logits = tf.add(tf.matmul(previous_output, W), b)
-						prediction = tf.argmax(output_logits, axis=1)
-						next_input = tf.nn.embedding_lookup(embeddings, prediction)
-						return next_input
-					
-					elements_finished = (time >= decoder_lengths)
+				def encoder_loop(i, x_t, h_tm1):
+					h_t = self.encoder_LSTM(x_t, h_tm1)
+					return i + 1, embedded_input_lt.read(i), h_t
 
-					finished = tf.reduce_all(elements_finished)
-					next_input_ = tf.cond(finished, lambda: pad_step_embedded, get_next_input)
-					state = previous_state
-					output = previous_output
-					loop_state = None
+				_,_, encoder_final_hidden_memory_tuple = control_flow_ops.while_loop(
+					cond=lambda i, _1, _2: i < self.sequence_length,
+					body=encoder_loop,
+					loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), self.eh0))
 
-					return (elements_finished, next_input_, state, output, loop_state)
+				self.encoder_final_state,_ = tf.unstack(encoder_final_hidden_memory_tuple)
+			
 
-				def loop_fn(time, previous_output, previous_state, previous_loop_state):
-					if previous_state is None:
-						return loop_fn_initial()
-					else:
-						return loop_fn_transition(time, previous_output, previous_state, previous_loop_state)
 
-				decoder_outputs_ta, decoder_final_state, _ = tf.nn.raw_rnn(decoder_cell, loop_fn)
-				decoder_outputs = decoder_outputs_ta.stack()
-
-				decoder_max_steps, decoder_batch_size, decoder_dim = tf.unstack(tf.shape(decoder_outputs))
-				decoder_outputs_flat = tf.reshape(decoder_outputs, (-1, decoder_dim))
-				decoder_logits_flat = tf.add(tf.matmul(decoder_outputs_flat, W), b)
-				decoder_logits = tf.reshape(decoder_logits_flat, (decoder_max_steps, decoder_batch_size, vocab_size))
+	
+	
+	
 				
-				decoder_prediction = tf.argmax(decoder_logits, 2)
