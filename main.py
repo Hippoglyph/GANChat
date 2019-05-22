@@ -27,7 +27,7 @@ class Trainer():
 				[self.generator.pretrain_loss],
 				{
 				self.generator.input_seq: dummyInput,
-				self.generator.pretrain_target: dymmyTarget
+				self.generator.target_seq: dymmyTarget
 				})
 			
 

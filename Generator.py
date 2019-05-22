@@ -24,7 +24,7 @@ class Generator():
 		with tf.name_scope("generator"):
 			with tf.name_scope("inputs"):
 				self.input_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="input_sequence")
-				self.pretrain_target = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="target_sequence")
+				self.target_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="target_sequence")
 			
 				self.batch_size = tf.shape(self.input_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
@@ -35,7 +35,7 @@ class Generator():
 				#with tf.device("/cpu:0"):
 				self.embedded_input_transposed = tf.transpose(self.embedded_input, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
 
-				self.embedded_pretrain_target = self.embedding.getEmbedding(self.pretrain_target)
+				self.embedded_pretrain_target = self.embedding.getEmbedding(self.target_seq)
 				#with tf.device("/cpu:0"):
 				self.embedded_pretrain_target_transposed = tf.transpose(self.embedded_pretrain_target, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
 
@@ -102,12 +102,14 @@ class Generator():
 
 					self.pretrain_predictions = tf.transpose(self.pretrain_predictions.stack(), perm=[1,0,2]) # batch_size x sequence_length x vocab_size
 
-					self.pretrain_loss = -tf.reduce_sum(
-			            tf.one_hot(tf.reshape(self.input_seq, [-1]), self.vocab_size, 1.0, 0.0) * # (batch_size x sequence_length) x vocab_size
+					self.pretrain_loss = -tf.reduce_sum( #Cross entropy loss
+			            tf.one_hot(tf.reshape(self.target_seq, [-1]), self.vocab_size, 1.0, 0.0) * # (batch_size x sequence_length) x vocab_size
 			            	tf.log(
 			                	tf.clip_by_value(tf.reshape(self.pretrain_predictions, [-1, self.vocab_size]), 1e-20, 1.0)
 				            )
 			        	) / (tf.cast(self.sequence_length * self.batch_size,dtype=tf.float32))
+
+
 			
 
 
