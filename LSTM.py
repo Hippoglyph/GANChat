@@ -30,26 +30,34 @@ def LSTM_recurrent_unit(input_size,hidden_size, id, params):
 
 			# Input Gate
 			i = tf.sigmoid(
-				tf.matmul(x, Wi) +
-				tf.matmul(previous_hidden_state, Ui) + bi
+				tf.add(
+					tf.matmul(x, Wi),
+					tf.add(tf.matmul(previous_hidden_state, Ui), bi)
+				)
 			)
 
 			# Forget Gate
 			f = tf.sigmoid(
-				tf.matmul(x, Wf) +
-				tf.matmul(previous_hidden_state, Uf) + bf
+				tf.add(
+					tf.matmul(x, Wf),
+					tf.add(tf.matmul(previous_hidden_state, Uf), bf)
+				)
 			)
 
 			# Output Gate
 			o = tf.sigmoid(
-				tf.matmul(x, Wog) +
-				tf.matmul(previous_hidden_state, Uog) + bog
+				tf.add(
+					tf.matmul(x, Wog),
+					tf.add(tf.matmul(previous_hidden_state, Uog), bog)
+				)
 			)
 
 			# New Memory Cell
 			c_ = tf.nn.tanh(
-				tf.matmul(x, Wc) +
-				tf.matmul(previous_hidden_state, Uc) + bc
+				tf.add(
+					tf.matmul(x, Wc),
+					tf.add(tf.matmul(previous_hidden_state, Uc), bc)
+				)
 			)
 
 			# Final Memory cell
@@ -70,10 +78,8 @@ def LSTM_output_unit(input_size,hidden_size, id, params):
 		params.extend([Wo, bo])
 
 		def unit(hidden_memory_tuple):
-			hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
-			# hidden_state : batch x hidden_dim
-			logits = tf.matmul(hidden_state, Wo) + bo
-			# output = tf.nn.softmax(logits)
+			hidden_state, c_prev = tf.unstack(hidden_memory_tuple) # hidden_state : batch x hidden_dim
+			logits = tf.add(tf.matmul(hidden_state, Wo), bo)
 			return logits
 
 		return unit
