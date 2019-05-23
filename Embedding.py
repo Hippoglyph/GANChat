@@ -10,7 +10,7 @@ class Embedding():
 		#with tf.device('/cpu:0'), tf.name_scope("embedding"):
 		with tf.name_scope("embedding"):
 			self.EM = tf.Variable(
-				tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0),
+				tf.random.uniform([self.vocab_size, self.embedding_size], -1.0, 1.0),
 				name="EM")
 
 	def getEmbedding(self, inputIds):

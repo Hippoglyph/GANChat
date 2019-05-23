@@ -73,7 +73,7 @@ class Generator():
 							h_t = self.decoder_LSTM(x_t, h_tm1)
 							o_t = self.decoder_LSTM_output(h_t) # batch_size x vocab_size
 							log_prob = tf.log(tf.nn.softmax(o_t))
-							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.random.categorical(log_prob, 1, dtype=tf.int32), [self.batch_size]), lambda: target_lt.read(i))
+							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(log_prob, 1, output_dtype=tf.int32), [self.batch_size]), lambda: target_lt.read(i))
 							x_tp1 = self.embedding.getEmbedding(next_token)
 							gen_seq = gen_seq.write(i, next_token)
 							gen_seq_prob = gen_seq_prob.write(i, log_prob)

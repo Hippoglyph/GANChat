@@ -3,6 +3,8 @@ from Embedding import Embedding
 from Generator import Generator
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
+#import os
+#os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 class Trainer():
 	def __init__(self):
@@ -19,9 +21,9 @@ class Trainer():
 						[0,1,2,3]]
 		#dymmyTarget = [[3,2,1,0],
 		#				[0,1,2,3]]
-		config=tf.ConfigProto(log_device_placement=True)
+		#config=tf.ConfigProto(log_device_placement=True)
 		with tf.Session() as sess:
-			print(device_lib.list_local_devices())
+			#print(device_lib.list_local_devices())
 			sess.run(tf.global_variables_initializer())
 
 			#output = self.generator.generate(sess, dummyInput)
@@ -36,6 +38,6 @@ class Trainer():
 			
 
 			print(output)
-
+			
 if __name__ == "__main__":
 	Trainer().train()
