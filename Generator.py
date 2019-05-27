@@ -1,8 +1,9 @@
 import tensorflow as tf
 from LSTM import LSTM_recurrent_unit, LSTM_output_unit
+import numpy as np
 
 class Generator():
-	def __init__(self, embedding, sequence_length, start_token, vocab_size):
+	def __init__(self, embedding, sequence_length, start_token, vocab_size, learning_rate):
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
@@ -10,14 +11,25 @@ class Generator():
 		self.decoder_units = self.encoder_units #Add noice here
 		self.vocab_size = vocab_size
 		self.params = []
+		self.learning_rate = learning_rate
 		self.buildGraph()
 
 	def generate(self, sess, inputs):
 		output = sess.run(
-				[self.seqences[0]],
+				self.seqences[0],
 				{self.input_seq: inputs,self.target_seq: inputs})
 		return output
 
+	def pretrain(self, sess, inputs, targets):
+		loss,_ = sess.run(
+				[self.pretrain_loss, self.pretrain_update],
+				{self.input_seq: inputs,self.target_seq: targets})
+		return loss
+
+	def rolloutStep(self, sess, inputs, targets, keepIndex):
+		return sess.run(
+			self.seqences[keepIndex],
+			{self.input_seq: inputs, self.target_seq: targets})
 
 	def buildGraph(self):
 		with tf.name_scope("generator"):
@@ -72,11 +84,11 @@ class Generator():
 						def gen_loop(i, x_t, h_tm1, gen_seq, gen_seq_prob, keep_length):
 							h_t = self.decoder_LSTM(x_t, h_tm1)
 							o_t = self.decoder_LSTM_output(h_t) # batch_size x vocab_size
-							log_prob = tf.log(tf.nn.softmax(o_t))
-							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(log_prob, 1, output_dtype=tf.int32), [self.batch_size]), lambda: target_lt.read(i))
+							prob = tf.nn.softmax(o_t)
+							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self.batch_size]), lambda: target_lt.read(i))
 							x_tp1 = self.embedding.getEmbedding(next_token)
 							gen_seq = gen_seq.write(i, next_token)
-							gen_seq_prob = gen_seq_prob.write(i, log_prob)
+							gen_seq_prob = gen_seq_prob.write(i, prob)
 							return i + 1, x_tp1, h_t, gen_seq, gen_seq_prob, keep_length
 
 						_,_,_,gen_seq, gen_seq_prob,_ = tf.while_loop(
@@ -90,9 +102,12 @@ class Generator():
 					self.seqences = seqences
 					self.seqences_probs = seqences_probs
 
-				with tf.name_scope("pretrain"):
-					logits = tf.log(tf.clip_by_value(self.seqences_probs[self.sequence_length], 1e-8,1-1e-8))
-					self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.target_seq, logits=logits))
+			with tf.name_scope("pretrain"):
+				logits = tf.log(tf.clip_by_value(self.seqences_probs[self.sequence_length], 1e-8,1-1e-8))
+				self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.target_seq, logits=logits))
+				pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.params), 5.0)
+				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.params))
 
 
 			

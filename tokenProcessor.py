@@ -65,14 +65,19 @@ class tokenProcessor():
 
 	def initTokenMaps(self):
 		print("Initilizing token maps")
-		if not os.path.exists(os.path.join(pathToReddit, self.wordToIndexFileName)):
-			print("No token index folder")
+		path = os.path.join(os.path.realpath(__file__), self.wordToIndexFileName)
+		if not os.path.exists(path):
+			pathInReddit = os.path.join(pathToReddit, self.wordToIndexFileName)
+			if not os.path.exists(pathInReddit):
+				print("No token index folder")
+			else:
+				path = pathInReddit
 			return
 
 		self.tokenToInt = {}
 		self.intToToken = {}
 
-		with open(os.path.join(pathToReddit, self.wordToIndexFileName), "r") as tokenToIndexFile:
+		with open(path, "r") as tokenToIndexFile:
 			for token in tokenToIndexFile.readlines():
 				self.tokenToInt[token["word"]] = token["id"]
 				self.intToToken[token["id"]] = token["word"]

@@ -486,10 +486,10 @@ class Processor():
 		wordList = sorted(wordCountDict.items(), key = lambda kv: (kv[1], kv[0]), reverse= True)[:self.keepTopTokens]
 		wordToIndex = {}
 		for i in range(len(wordList)):
-			wordToIndex[wordList[i][0]] = i+2
+			wordToIndex[wordList[i][0]] = i+3
 		wordToIndex[self.tokenProcessor.replaceTokens["pad"]] = 0
-		#wordToIndex[self.tokenProcessor.replaceTokens["end"]] = 1
-		wordToIndex[self.tokenProcessor.replaceTokens["unknown"]] = 1
+		wordToIndex[self.tokenProcessor.replaceTokens["start"]] = 1
+		wordToIndex[self.tokenProcessor.replaceTokens["unknown"]] = 2
 
 		with open(os.path.join(pathToProcess, self.wordToIndexFileName), 'w', encoding="utf-8") as file:
 			for k,v in wordToIndex.items():
@@ -515,14 +515,14 @@ class Processor():
 		testFileId = 0
 		for i,datapoint in enumerate(trainingDatapoints):
 			pp.print(i)
-			trainList.append({"post": self.getSequenceForText(datapoint["post"], wordToIndex), "reply": self.getSequenceForText(datapoint["reply"], wordToIndex)})
+			trainList.append({"post": self.getSequenceForPost(datapoint["post"], wordToIndex), "reply": self.getSequenceForReply(datapoint["reply"], wordToIndex)})
 			if len(trainList) >= self.dataPointsPerFile:
 				self.dumpJson(trainList, trainFileId, pathToSeqTrain)
 				trainList = []
 				trainFileId += 1
 		self.dumpJson(trainList, trainFileId, pathToSeqTrain)
 		for datapoint in testDatapoints:
-			testList.append({"post": self.getSequenceForText(datapoint["post"], wordToIndex), "reply": self.getSequenceForText(datapoint["reply"], wordToIndex)})
+			testList.append({"post": self.getSequenceForPost(datapoint["post"], wordToIndex), "reply": self.getSequenceForReply(datapoint["reply"], wordToIndex)})
 			if len(testList) >= self.dataPointsPerFile:
 				self.dumpJson(testList, testFileId, pathToSeqTest)
 				testList = []
@@ -530,7 +530,7 @@ class Processor():
 		self.dumpJson(testList, testFileId, pathToSeqTest)
 		pp.done()
 
-	def getSequenceForText(self, text, wordToIndex):
+	def getSequenceForReply(self, text, wordToIndex):
 		tokens = self.tokenProcessor.tokenize(text)
 		sequence = []
 		for token in tokens:
@@ -540,6 +540,18 @@ class Processor():
 			sequence.append(ID)
 		while len(sequence) < self.maxLenKeep + 1:
 			sequence.append(wordToIndex[self.tokenProcessor.replaceTokens["pad"]])
+		return sequence
+
+	def getSequenceForPost(self, text, wordToIndex):
+		tokens = self.tokenProcessor.tokenize(text)
+		sequence = []
+		while len(sequence) < self.maxLenKeep + 1 - len(tokens):
+			sequence.append(wordToIndex[self.tokenProcessor.replaceTokens["pad"]])
+		for token in tokens:
+			ID = wordToIndex[self.tokenProcessor.replaceTokens["unknown"]]
+			if token in wordToIndex:
+				ID = wordToIndex[token]
+			sequence.append(ID)
 		return sequence
 
 
