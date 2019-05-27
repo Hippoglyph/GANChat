@@ -19,6 +19,7 @@ def LSTM_recurrent_unit(input_size,hidden_size, id, params):
 		Wc = tf.Variable(tf.random_normal([input_size, hidden_size], stddev=std), name="LSTM_"+str(id)+"_Wc")
 		Uc = tf.Variable(tf.random_normal([hidden_size, hidden_size], stddev=std), name="LSTM_"+str(id)+"_Uc")
 		bc = tf.Variable(tf.random_normal([hidden_size], stddev=std), name="LSTM_"+str(id)+"_Bc")
+		
 		params.extend([
 			Wi, Ui, bi,
 			Wf, Uf, bf,
