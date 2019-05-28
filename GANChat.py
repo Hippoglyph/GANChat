@@ -1,6 +1,7 @@
 import tensorflow as tf
 from Embedding import Embedding
 from Generator import Generator
+from Discriminator import Discriminator
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 #import os
@@ -16,8 +17,10 @@ class GANChat():
 
 		self.embedding = Embedding(self.vocab_size, self.embedding_size)
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate)
+		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate)
 
 	def train(self):
+		dummyLabels = [0, 1]
 		dummyInput = [[3,2,1,0],
 						[0,1,2,3]]
 		#dymmyTarget = [[3,2,1,0],
@@ -27,22 +30,32 @@ class GANChat():
 			#print(device_lib.list_local_devices())
 			sess.run(tf.global_variables_initializer())
 
-			#for _ in range(100):
+			for _ in range(100):
 
-			#output = self.generator.generate(sess, dummyInput)
-			#output = self.generator.pretrain(sess, dummyInput, dummyInput)
-			output = self.generator.rolloutStep(sess, dummyInput, dummyInput, 1)
+				#output = self.generator.generate(sess, dummyInput)
+				#output = self.generator.pretrain(sess, dummyInput, dummyInput)
+				output = self.discriminator.train(sess, dummyInput, dummyInput, dummyLabels)
+				#output = self.generator.rolloutStep(sess, dummyInput, dummyInput, 1)
+				'''
+				output = sess.run(
+					self.discriminator.testOutput,
+					{
+					self.discriminator.post_seq: dummyInput,
+					self.discriminator.reply_seq: dummyInput,
+					self.discriminator.targets: dummyLabels
+					})
+				'''
+				'''
+				output = sess.run(
+					[self.generator.pretrain_loss],
+					{
+					self.generator.post_seq: dummyInput,
+					self.generator.target_seq: dummyInput
+					})
+				'''
+				print(output)
 
-			'''
-			output = sess.run(
-				[self.generator.pretrain_loss],
-				{
-				self.generator.input_seq: dummyInput,
-				self.generator.target_seq: dummyInput
-				})
-			'''
-
-			print(output)
+				
 				
 if __name__ == "__main__":
 	GANChat().train()

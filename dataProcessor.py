@@ -434,9 +434,9 @@ class Processor():
 						replyLen += len([i for i in replySeq if i >= 1])
 
 						for word in postSeq + replySeq:
-							if word >= 1:
+							if word >= 2:
 								wordCount += 1
-							if word == 1:
+							if word == 2:
 								unkCount += 1
 			pp.done()
 
@@ -557,14 +557,14 @@ class Processor():
 
 def main():
 	p = Processor()
-	p.processDataset()
+	#p.processDataset()
 	#p.writeAllProccessedToFile()
 	#p.writeSampleSplitFile()
-	p.wordCountAllFiles()
-	p.produceFinalTextDataset()
-	p.printdatasetInfo()
+	#p.wordCountAllFiles()
+	#p.produceFinalTextDataset()
+	#p.printdatasetInfo()
 	#p.countSubredditRatio()
-	p.createSequenceDataset()
+	#p.createSequenceDataset()
 	p.printSequenceDatasetInfo()
 
 

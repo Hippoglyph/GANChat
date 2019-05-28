@@ -70,9 +70,9 @@ class tokenProcessor():
 			pathInReddit = os.path.join(pathToReddit, self.wordToIndexFileName)
 			if not os.path.exists(pathInReddit):
 				print("No token index folder")
+				return
 			else:
 				path = pathInReddit
-			return
 
 		self.tokenToInt = {}
 		self.intToToken = {}

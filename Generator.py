@@ -14,56 +14,56 @@ class Generator():
 		self.learning_rate = learning_rate
 		self.buildGraph()
 
-	def generate(self, sess, inputs):
+	def generate(self, sess, post):
 		output = sess.run(
 				self.seqences[0],
-				{self.input_seq: inputs,self.target_seq: inputs})
+				{self.post_seq: post,self.reply_seq: post})
 		return output
 
-	def pretrain(self, sess, inputs, targets):
+	def pretrain(self, sess, post, reply):
 		loss,_ = sess.run(
 				[self.pretrain_loss, self.pretrain_update],
-				{self.input_seq: inputs,self.target_seq: targets})
+				{self.post_seq: post,self.reply_seq: reply})
 		return loss
 
-	def rolloutStep(self, sess, inputs, targets, keepIndex):
+	def rolloutStep(self, sess, post, reply, keepIndex):
 		return sess.run(
 			self.seqences[keepIndex],
-			{self.input_seq: inputs, self.target_seq: targets})
+			{self.post_seq: post, self.reply_seq: reply})
 
 	def buildGraph(self):
 		with tf.name_scope("generator"):
 			with tf.name_scope("inputs"):
-				self.input_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="input_sequence")
-				self.target_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="target_sequence")
+				self.post_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="post_sequence")
+				self.reply_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="reply_sequence")
 			
-				self.batch_size = tf.shape(self.input_seq)[0]
+				self.batch_size = tf.shape(self.post_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
 			
 				self.params.extend(self.embedding.getParams())
 
-				self.embedded_input = self.embedding.getEmbedding(self.input_seq)
+				self.embedded_post = self.embedding.getEmbedding(self.post_seq)
 				#with tf.device("/cpu:0"):
-				self.embedded_input_transposed = tf.transpose(self.embedded_input, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
+				self.embedded_post_transposed = tf.transpose(self.embedded_post, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
 
 			with tf.name_scope("encoder"):
 
-				embedded_input_lt = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
-				embedded_input_lt = embedded_input_lt.unstack(self.embedded_input_transposed)
+				embedded_post_lt = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
+				embedded_post_lt = embedded_post_lt.unstack(self.embedded_post_transposed)
 				
 				self.encoder_LSTM = LSTM_recurrent_unit(self.embedding.embedding_size,self.encoder_units, "encoder_1", self.params)
 
-				self.eh0 = tf.zeros([self.batch_size, self.encoder_units])
-				self.eh0 = tf.stack([self.eh0, self.eh0])
+				eh0 = tf.zeros([self.batch_size, self.encoder_units])
+				eh0 = tf.stack([eh0, eh0])
 
 				def encoder_loop(i, x_t, h_tm1):
 					h_t = self.encoder_LSTM(x_t, h_tm1)
-					return i + 1, embedded_input_lt.read(i), h_t
+					return i + 1, embedded_post_lt.read(i), h_t
 
 				_,_, self.encoder_final_hidden_memory_tuple = tf.while_loop(
 					cond=lambda i, _1, _2: i < self.sequence_length,
 					body=encoder_loop,
-					loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), self.eh0))
+					loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), eh0))
 
 			with tf.name_scope("decoder"):
 
@@ -72,39 +72,39 @@ class Generator():
 
 				with tf.name_scope("generate"):
 
-					target_lt = tf.TensorArray(dtype=tf.int32, size=self.sequence_length)
-					target_lt = target_lt.unstack(tf.transpose(self.target_seq, perm=[1,0]))
+					reply_lt = tf.TensorArray(dtype=tf.int32, size=self.sequence_length)
+					reply_lt = reply_lt.unstack(tf.transpose(self.reply_seq, perm=[1,0]))
 
 					seqences = []
-					seqences_probs = []
+					seqences_logits = []
 					for iteration_number in range(self.sequence_length+1):
 						gen_seq = tf.TensorArray(dtype=tf.int32, size=self.sequence_length)
-						gen_seq_prob = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
+						gen_seq_logits = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
 
-						def gen_loop(i, x_t, h_tm1, gen_seq, gen_seq_prob, keep_length):
+						def gen_loop(i, x_t, h_tm1, gen_seq, gen_seq_logits, keep_length):
 							h_t = self.decoder_LSTM(x_t, h_tm1)
 							o_t = self.decoder_LSTM_output(h_t) # batch_size x vocab_size
 							prob = tf.nn.softmax(o_t)
-							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self.batch_size]), lambda: target_lt.read(i))
+							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self.batch_size]), lambda: reply_lt.read(i))
 							x_tp1 = self.embedding.getEmbedding(next_token)
 							gen_seq = gen_seq.write(i, next_token)
-							gen_seq_prob = gen_seq_prob.write(i, prob)
-							return i + 1, x_tp1, h_t, gen_seq, gen_seq_prob, keep_length
+							gen_seq_logits = gen_seq_logits.write(i, o_t)
+							return i + 1, x_tp1, h_t, gen_seq, gen_seq_logits, keep_length
 
-						_,_,_,gen_seq, gen_seq_prob,_ = tf.while_loop(
+						_,_,_,gen_seq, gen_seq_logits,_ = tf.while_loop(
 							cond=lambda i, _1, _2, _3, _4, _5: i < self.sequence_length,
 							body=gen_loop,
-							loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), self.encoder_final_hidden_memory_tuple, gen_seq, gen_seq_prob, tf.constant(iteration_number,dtype=tf.int32)))
+							loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), self.encoder_final_hidden_memory_tuple, gen_seq, gen_seq_logits, tf.constant(iteration_number,dtype=tf.int32)))
 
 						seqences.append(tf.transpose(gen_seq.stack(), perm=[1,0])) # batch_size x sequence_length
-						seqences_probs.append(tf.transpose(gen_seq_prob.stack(), perm=[1,0,2])) # batch_size x sequence_length x vocab_size
+						seqences_logits.append(tf.transpose(gen_seq_logits.stack(), perm=[1,0,2])) # batch_size x sequence_length x vocab_size
 
 					self.seqences = seqences
-					self.seqences_probs = seqences_probs
+					self.seqences_logits = seqences_logits
 
 			with tf.name_scope("pretrain"):
-				logits = tf.log(tf.clip_by_value(self.seqences_probs[self.sequence_length], 1e-8,1-1e-8))
-				self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.target_seq, logits=logits))
+				#logits = tf.log(tf.clip_by_value(self.seqences_logits[self.sequence_length], 1e-8,1-1e-8))
+				self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=self.seqences_logits[self.sequence_length]))
 				pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.params), 5.0)
 				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.params))

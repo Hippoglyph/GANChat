@@ -1,0 +1,70 @@
+--Producing process dataset
+Replacing files
+100%
+Storing files
+100%
+Removed 6932 datapoints
+Kept 4247194 datapoints
+--Word count processed data
+Creating token keep list
+If keep top 30000 tokens 98.8% will be kept
+100%
+--Producing final text dataset
+Constructing token set
+Reading data
+Storing data
+100%
+Discarded 394323 dataPoints
+Kept 3852871 dataPoints
+Kept 90.7% of the dataset
+210398 datapoints with unknown tokens in post
+766479 datapoints with unknown tokens in reply
+--Printing Information on final text dataset
+Reading...
+100%
+Total Datapoints: 3812296
+Total Posts: 190061
+Replies per post: 20.1 avg
+Subbreddit ratio
+AskReddit: 100.0%
+Reply length: 20.2 avg
+Post length: 14.7 avg
+Unknown words: 966686 of 132747095
+Unknown words: 0.7%
+Max/min length replies: 63/5
+Max/min length posts: 63/5
+Reading...
+100%
+Total Datapoints: 40575
+Total Posts: 2000
+Replies per post: 20.3 avg
+Subbreddit ratio
+AskReddit: 100.0%
+Reply length: 20.2 avg
+Post length: 14.7 avg
+Unknown words: 10191 of 1391341
+Unknown words: 0.7%
+Max/min length replies: 63/5
+Max/min length posts: 60/5
+--Creating sequence dataset
+Reading training...
+100%
+Reading test...
+100%
+Storing data...
+100%
+--Printing Information on sequence dataset
+Reading...
+100%
+Total Datapoints: 3812296
+Reply length: 20.2 avg
+Post length: 14.7 avg
+Unknown words: 963417 of 132777093
+Unknown words: 0.7%
+Reading...
+100%
+Total Datapoints: 40575
+Reply length: 20.2 avg
+Post length: 14.7 avg
+Unknown words: 10637 of 1413225
+Unknown words: 0.8%
