@@ -3,27 +3,37 @@ from LSTM import LSTM_recurrent_unit, LSTM_output_unit
 import numpy as np
 
 class Generator():
-	def __init__(self, embedding, sequence_length, start_token, vocab_size, learning_rate):
+	def __init__(self, embedding, sequence_length, start_token, vocab_size, learning_rate, batch_size):
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
 		self.encoder_units = 4
-		self.decoder_units = self.encoder_units #Add noice here
+		self.noiseSize = 2
+		self.noiseStd = 1.0
+		self.decoder_units = self.encoder_units + self.noiseSize
 		self.vocab_size = vocab_size
+		self.batch_size = batch_size
 		self.params = []
 		self.learning_rate = learning_rate
 		self.buildGraph()
 
-	def generate(self, sess, post):
-		output = sess.run(
-				self.seqences[0],
-				{self.post_seq: post,self.reply_seq: post})
+	def generate(self, sess, post, noise=True):
+		if(noise):
+			output = sess.run(
+					self.seqences[0],
+					{self.post_seq: post,self.reply_seq: post})
+		else:
+			noise = np.zeros((self.batch_size, self.noiseSize))
+			output = sess.run(
+					self.seqences[0],
+					{self.post_seq: post,self.reply_seq: post, self.noise: noise})
 		return output
 
 	def pretrain(self, sess, post, reply):
+		noise = np.zeros((self.batch_size, self.noiseSize))
 		loss,_ = sess.run(
 				[self.pretrain_loss, self.pretrain_update],
-				{self.post_seq: post,self.reply_seq: reply})
+				{self.post_seq: post,self.reply_seq: reply, self.noise: noise})
 		return loss
 
 	def rolloutStep(self, sess, post, reply, keepIndex):
@@ -31,13 +41,29 @@ class Generator():
 			self.seqences[keepIndex],
 			{self.post_seq: post, self.reply_seq: reply})
 
+	def calculateReward(self, sess, post, reply, tokenSampleRate, discriminator):
+		rewards = np.zeros((self.batch_size, self.sequence_length))
+		for keepNumber in range(self.sequence_length):
+			for i in range(tokenSampleRate):
+				sampleReply = self.rolloutStep(sess, post, reply, keepNumber)
+				rewards[:,keepNumber] += discriminator.evaluate(sess, post, sampleReply)
+		return rewards / tokenSampleRate
+
+	def train(self, sess, post, reply, rewards):
+		loss,_ = sess.run(
+				[self.loss, self.update],
+				{self.post_seq: post, self.reply_seq: reply, self.rewards: rewards})
+		return loss
+
 	def buildGraph(self):
 		with tf.name_scope("generator"):
 			with tf.name_scope("inputs"):
-				self.post_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="post_sequence")
-				self.reply_seq = tf.placeholder(tf.int32, shape=[None, self.sequence_length], name="reply_sequence")
+				self.post_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="post_sequence")
+				self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
+				self.rewards = tf.placeholder(tf.float32, shape=[self.batch_size, self.sequence_length], name="rewards")
+				self.noise = tf.placeholder_with_default(tf.random_normal([self.batch_size, self.noiseSize], 0.0, self.noiseStd), shape=[self.batch_size, self.noiseSize], name="noise")
 			
-				self.batch_size = tf.shape(self.post_seq)[0]
+				#self.batch_size = tf.shape(self.post_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
 			
 				self.params.extend(self.embedding.getParams())
@@ -67,8 +93,14 @@ class Generator():
 
 			with tf.name_scope("decoder"):
 
-				self.decoder_LSTM = LSTM_recurrent_unit(self.embedding.embedding_size,self.encoder_units, "decoder_1",self.params)
-				self.decoder_LSTM_output = LSTM_output_unit(self.vocab_size,self.encoder_units, "decoder_1", self.params)
+				self.decoder_LSTM = LSTM_recurrent_unit(self.embedding.embedding_size,self.decoder_units, "decoder_1",self.params)
+				self.decoder_LSTM_output = LSTM_output_unit(self.vocab_size,self.decoder_units, "decoder_1", self.params)
+
+				with tf.name_scope("noise"):
+					h0, c0 = tf.unstack(self.encoder_final_hidden_memory_tuple)
+					h0 = tf.concat([h0, self.noise], 1)
+					c0 = tf.concat([c0, self.noise], 1)
+					decoderH0 = tf.stack([h0,c0])
 
 				with tf.name_scope("generate"):
 
@@ -94,7 +126,7 @@ class Generator():
 						_,_,_,gen_seq, gen_seq_logits,_ = tf.while_loop(
 							cond=lambda i, _1, _2, _3, _4, _5: i < self.sequence_length,
 							body=gen_loop,
-							loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), self.encoder_final_hidden_memory_tuple, gen_seq, gen_seq_logits, tf.constant(iteration_number,dtype=tf.int32)))
+							loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), decoderH0, gen_seq, gen_seq_logits, tf.constant(iteration_number,dtype=tf.int32)))
 
 						seqences.append(tf.transpose(gen_seq.stack(), perm=[1,0])) # batch_size x sequence_length
 						seqences_logits.append(tf.transpose(gen_seq_logits.stack(), perm=[1,0,2])) # batch_size x sequence_length x vocab_size
@@ -109,6 +141,14 @@ class Generator():
 				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.params), 5.0)
 				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.params))
 
+			with tf.name_scope("train"):
+				genSequence = self.seqences[self.sequence_length]
+				genProb = tf.nn.softmax(self.seqences_logits[self.sequence_length])
+				genLogProb = tf.log(tf.clip_by_value(genProb, 1e-8,1-1e-8))
+				self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(genSequence, self.vocab_size) * genLogProb, -1) * self.rewards)
+				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+				self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.params), 5.0)
+				self.update = optimizer.apply_gradients(zip(self.grad, self.params))
 
 			
 
