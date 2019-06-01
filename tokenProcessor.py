@@ -65,7 +65,7 @@ class tokenProcessor():
 
 	def initTokenMaps(self):
 		print("Initilizing token maps")
-		path = os.path.join(os.path.realpath(__file__), self.wordToIndexFileName)
+		path = os.path.join(os.path.dirname(__file__), self.wordToIndexFileName)
 		if not os.path.exists(path):
 			pathInReddit = os.path.join(pathToReddit, self.wordToIndexFileName)
 			if not os.path.exists(pathInReddit):

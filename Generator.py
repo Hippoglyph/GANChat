@@ -31,10 +31,10 @@ class Generator():
 
 	def pretrain(self, sess, post, reply):
 		noise = np.zeros((self.batch_size, self.noiseSize))
-		loss,_ = sess.run(
-				[self.pretrain_loss, self.pretrain_update],
+		loss_summary,_ = sess.run(
+				[self.pretrain_summary, self.pretrain_update],
 				{self.post_seq: post,self.reply_seq: reply, self.noise: noise})
-		return loss
+		return loss_summary
 
 	def rolloutStep(self, sess, post, reply, keepIndex):
 		return sess.run(
@@ -50,10 +50,10 @@ class Generator():
 		return rewards / tokenSampleRate
 
 	def train(self, sess, post, reply, rewards):
-		loss,_ = sess.run(
-				[self.loss, self.update],
+		loss_summary,_ = sess.run(
+				[self.train_summary, self.update],
 				{self.post_seq: post, self.reply_seq: reply, self.rewards: rewards})
-		return loss
+		return loss_summary
 
 	def buildGraph(self):
 		with tf.name_scope("generator"):
@@ -140,6 +140,7 @@ class Generator():
 				pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.params), 5.0)
 				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.params))
+				self.pretrain_summary = tf.summary.scalar("generator_pretrain_loss", self.pretrain_loss)
 
 			with tf.name_scope("train"):
 				genSequence = self.seqences[self.sequence_length]
@@ -149,6 +150,7 @@ class Generator():
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.params), 5.0)
 				self.update = optimizer.apply_gradients(zip(self.grad, self.params))
+				self.train_summary = tf.summary.scalar("generator_loss", self.loss)
 
 			
 

@@ -11,13 +11,14 @@ class Discriminator():
 		self.batch_size = batch_size
 		self.params = []
 		self.learning_rate = learning_rate
+		self.dropout = 0.75
 		self.buildGraph()
 
-	def train(self, sess, post, reply, labels, dropout):
-		loss,_ = sess.run(
-				[self.loss, self.update_params],
-				{self.post_seq: post,self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: dropout})
-		return loss
+	def train(self, sess, post, reply, labels):
+		loss_summary,_ = sess.run(
+				[self.loss_summary, self.update_params],
+				{self.post_seq: post,self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: self.dropout})
+		return loss_summary
 
 	def evaluate(self, sess, post, reply):
 		return sess.run(
@@ -111,3 +112,4 @@ class Discriminator():
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.params), 5.0)
 				self.update_params = optimizer.apply_gradients(zip(self.gradients, self.params))
+				self.loss_summary =  tf.summary.scalar("discriminator_loss", self.loss)
