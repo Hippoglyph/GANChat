@@ -5,7 +5,7 @@ import json
 import random
 import re
 import sys
-from tokenProcessor import tokenProcessor
+from TokenProcessor import TokenProcessor
 from ProgressPrint import ProgressPrint
 
 pathToReddit = os.path.realpath("Reddit")
@@ -21,7 +21,7 @@ pathToSeqTest = os.path.join(pathToSequenceDataset, "test")
 
 class Processor():
 	def __init__(self):
-		self.tokenProcessor = tokenProcessor()
+		self.tokenProcessor = TokenProcessor()
 		self.dataPointsPerFile = 50000
 		self.keepListName = "tokenKeepList.json"
 		self.wordToIndexFileName = self.tokenProcessor.wordToIndexFileName
@@ -515,45 +515,20 @@ class Processor():
 		testFileId = 0
 		for i,datapoint in enumerate(trainingDatapoints):
 			pp.print(i)
-			trainList.append({"post": self.getSequenceForPost(datapoint["post"], wordToIndex), "reply": self.getSequenceForReply(datapoint["reply"], wordToIndex)})
+			trainList.append({"post": self.tokenProcessor.textToPostSequence(datapoint["post"], self.maxLenKeep), "reply": self.tokenProcessor.textToReplySequence(datapoint["reply"], self.maxLenKeep)})
 			if len(trainList) >= self.dataPointsPerFile:
 				self.dumpJson(trainList, trainFileId, pathToSeqTrain)
 				trainList = []
 				trainFileId += 1
 		self.dumpJson(trainList, trainFileId, pathToSeqTrain)
 		for datapoint in testDatapoints:
-			testList.append({"post": self.getSequenceForPost(datapoint["post"], wordToIndex), "reply": self.getSequenceForReply(datapoint["reply"], wordToIndex)})
+			testList.append({"post": self.tokenProcessor.textToPostSequence(datapoint["post"], self.maxLenKeep), "reply": self.tokenProcessor.textToReplySequence(datapoint["reply"], self.maxLenKeep)})
 			if len(testList) >= self.dataPointsPerFile:
 				self.dumpJson(testList, testFileId, pathToSeqTest)
 				testList = []
 				testFileId += 1
 		self.dumpJson(testList, testFileId, pathToSeqTest)
 		pp.done()
-
-	def getSequenceForReply(self, text, wordToIndex):
-		tokens = self.tokenProcessor.tokenize(text)
-		sequence = []
-		for token in tokens:
-			ID = wordToIndex[self.tokenProcessor.replaceTokens["unknown"]]
-			if token in wordToIndex:
-				ID = wordToIndex[token]
-			sequence.append(ID)
-		while len(sequence) < self.maxLenKeep + 1:
-			sequence.append(wordToIndex[self.tokenProcessor.replaceTokens["pad"]])
-		return sequence
-
-	def getSequenceForPost(self, text, wordToIndex):
-		tokens = self.tokenProcessor.tokenize(text)
-		sequence = []
-		while len(sequence) < self.maxLenKeep + 1 - len(tokens):
-			sequence.append(wordToIndex[self.tokenProcessor.replaceTokens["pad"]])
-		for token in tokens:
-			ID = wordToIndex[self.tokenProcessor.replaceTokens["unknown"]]
-			if token in wordToIndex:
-				ID = wordToIndex[token]
-			sequence.append(ID)
-		return sequence
-
 
 def main():
 	p = Processor()

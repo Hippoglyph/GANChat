@@ -7,7 +7,7 @@ class Discriminator():
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
-		self.encoder_units = 4
+		self.encoder_units = 1000
 		self.batch_size = batch_size
 		self.params = []
 		self.learning_rate = learning_rate

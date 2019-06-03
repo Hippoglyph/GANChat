@@ -2,10 +2,11 @@ import re
 import nltk
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 import os
+import json
 
 pathToReddit = os.path.realpath("Reddit")
 
-class tokenProcessor():
+class TokenProcessor():
 	def __init__(self):
 		self.replaceTokens = {"url": "xx-url-xx", "user": "xx-user-xx", "sub": "xx-subreddit-xx", "number": " xx-number-xx ", "hashtag": "xx-hashtag-xx", "unknown": "xx-unknown-xx", "end": "xx-end-xx", "start": "xx-start-xx", "pad": "xx-pad-xx"}
 		#self.splitString = r"([\s\"\(\)\[\]\{\}\,\.\?\!\%\&\:\;\-\=\\\/\*\^]" + "".join(["|"+self.replaceTokens[key] for key in self.replaceTokens])+")"
@@ -15,6 +16,18 @@ class tokenProcessor():
 
 		self.tokenToInt = None
 		self.intToToken = None
+
+	def getVocabSize(self):
+		self.checkTokenMap()
+		return len(self.tokenToInt)
+
+	def getStartToken(self):
+		self.checkTokenMap()
+		return self.tokenToInt[self.replaceTokens["start"]]
+
+	def checkTokenMap(self):
+		if not self.tokenToInt:
+			self.initTokenMaps()
 
 	def replaceText(self, text):
 		text = text.lower()
@@ -79,5 +92,40 @@ class tokenProcessor():
 
 		with open(path, "r") as tokenToIndexFile:
 			for token in tokenToIndexFile.readlines():
-				self.tokenToInt[token["word"]] = token["id"]
-				self.intToToken[token["id"]] = token["word"]
+				jsonObject = json.loads(token)
+				self.tokenToInt[jsonObject["word"]] = jsonObject["id"]
+				self.intToToken[jsonObject["id"]] = jsonObject["word"]
+
+	def textToReplySequence(self, text, length):
+		self.checkTokenMap()
+		tokens = self.tokenize(text)
+		sequence = []
+		for token in tokens:
+			ID = self.tokenToInt[self.replaceTokens["unknown"]]
+			if token in self.tokenToInt:
+				ID = self.tokenToInt[token]
+			sequence.append(ID)
+		while len(sequence) < length + 1:
+			sequence.append(self.tokenToInt[self.replaceTokens["pad"]])
+		return sequence
+
+	def textToPostSequence(self, text, length):
+		self.checkTokenMap()
+		tokens = self.tokenize(text)
+		sequence = []
+		while len(sequence) < length + 1 - len(tokens):
+			sequence.append(self.tokenToInt[self.replaceTokens["pad"]])
+		for token in tokens:
+			ID = self.tokenToInt[self.replaceTokens["unknown"]]
+			if token in self.tokenToInt:
+				ID = self.tokenToInt[token]
+			sequence.append(ID)
+		return sequence
+
+	def sequenceToText(self, sequence):
+		self.checkTokenMap()
+		nonPaddedTokens = []
+		for token in sequence:
+			if token != self.tokenToInt[self.replaceTokens["pad"]]:
+				nonPaddedTokens.append(self.intToToken[token])
+		return self.detokenize(nonPaddedTokens)

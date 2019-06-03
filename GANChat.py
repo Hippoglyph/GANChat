@@ -2,6 +2,8 @@ import tensorflow as tf
 from Embedding import Embedding
 from Generator import Generator
 from Discriminator import Discriminator
+from TokenProcessor import TokenProcessor
+from DataLoader import DataLoader
 import numpy as np
 import os
 from tensorflow.python.client import device_lib
@@ -24,13 +26,15 @@ class MODE:
 class GANChat():
 	def __init__(self):
 		tf.reset_default_graph()
-		self.sequence_length = 4#64
-		self.vocab_size = 5#30000 + 2
-		self.embedding_size = 3#64
-		self.start_token = 0
-		self.learning_rate = 0.01
-		self.batch_size = 2
-		self.tokenSampleRate = 5
+		self.batch_size = 8
+		self.tokenProcessor = TokenProcessor()
+		self.data_loader = DataLoader(self.batch_size)
+		self.sequence_length = self.data_loader.getSequenceLength()
+		self.vocab_size = self.tokenProcessor.getVocabSize()
+		self.start_token = self.tokenProcessor.getStartToken()
+		self.embedding_size = 32
+		self.learning_rate = 0.0001
+		self.token_sample_rate = 16
 
 		self.embedding = Embedding(self.vocab_size, self.embedding_size)
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
@@ -38,6 +42,7 @@ class GANChat():
 
 	def saveModel(self, sess, saver, saveModel, iteration):
 		if saveModel:
+			print("Saving model...")
 			save_path = saver.save(sess, pathToModel)
 			with open(os.path.join(pathToModelDir, iterationFile), 'w', encoding="utf-8") as file:
 				file.write(str(iteration))
@@ -47,6 +52,7 @@ class GANChat():
 		if not os.path.exists(pathToModelDir):
 			print("loadModel: Model does not exit: " + pathToModelDir)
 			return
+		print("Loading model...")
 		saver.restore(sess, pathToModel)
 		with open(os.path.join(pathToModelDir, iterationFile), 'r', encoding="utf-8") as file:
 			iteration = file.read()
@@ -58,12 +64,6 @@ class GANChat():
 		trainingMode = MODE.adviserialTraining
 		loadModel = False
 		saveModel = True
-
-		dummyLabels = [0, 1]
-		dummyInput = [[3,2,1,0],
-						[0,1,2,3]]
-		#dymmyTarget = [[3,2,1,0],
-		#				[0,1,2,3]]
 
 		saver = tf.train.Saver()
 
@@ -81,28 +81,35 @@ class GANChat():
 				if trainingMode == MODE.adviserialTraining:
 					for iteration in range(iterationStart, 9999999):
 						currentIteration = iteration
+						print("Iternation " + str(currentIteration) + " started")
 						#Generator
 						for _ in range(1):
-							genSequences = self.generator.generate(sess, dummyInput)
-							rewards = self.generator.calculateReward(sess, dummyInput, genSequences, self.tokenSampleRate, self.discriminator)
-							summary = self.generator.train(sess, dummyInput, genSequences, rewards)
+							print("Fetch batch")
+							postBatch, replyBatch = self.data_loader.nextBatch()
+							print("Gen sequence")
+							genSequences = self.generator.generate(sess, postBatch)
+							print("Score sequence")
+							rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
+							print("Train")
+							summary = self.generator.train(sess, postBatch, genSequences, rewards)
 						writer.add_summary(summary, iteration)
 						
-
 						#Discriminator
 						for _ in range(5):
-							posts = dummyInput
-							fakeSequences = self.generator.generate(sess, posts)
-							realSequences = dummyInput
+							print("Fetch batch")
+							postBatch, replyBatch = self.data_loader.nextBatch()
+							print("Gen sequence")
+							fakeSequences = self.generator.generate(sess, postBatch)
+							realSequences = replyBatch
 
-							posts =  np.concatenate([posts, posts])
+							posts =  np.concatenate([postBatch, postBatch])
 							samples = np.concatenate([fakeSequences, realSequences])
 							labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-
+							print("Train")
 							for _ in range(3):
 								index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
 								summary = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-							writer.add_summary(summary, iteration)
+							writer.add_summary(summary, iteration)	
 
 			except (KeyboardInterrupt, SystemExit):
 				self.saveModel(sess, saver, saveModel, currentIteration)

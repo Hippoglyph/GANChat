@@ -7,8 +7,8 @@ class Generator():
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
-		self.encoder_units = 4
-		self.noiseSize = 2
+		self.encoder_units = 2000
+		self.noiseSize = 256
 		self.noiseStd = 1.0
 		self.decoder_units = self.encoder_units + self.noiseSize
 		self.vocab_size = vocab_size
@@ -44,7 +44,7 @@ class Generator():
 	def calculateReward(self, sess, post, reply, tokenSampleRate, discriminator):
 		rewards = np.zeros((self.batch_size, self.sequence_length))
 		for keepNumber in range(self.sequence_length):
-			for i in range(tokenSampleRate):
+			for _ in range(tokenSampleRate):
 				sampleReply = self.rolloutStep(sess, post, reply, keepNumber)
 				rewards[:,keepNumber] += discriminator.evaluate(sess, post, sampleReply)
 		return rewards / tokenSampleRate
