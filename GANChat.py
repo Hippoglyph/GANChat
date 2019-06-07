@@ -18,9 +18,9 @@ loadModelId = "LSTMpretrain"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
-pathToStoreModelDir = os.path.join(pathToModelsDir, "model"+storeModelId)
+pathToStoreModelDir = os.path.join(pathToModelsDir, storeModelId)
 pathToStoreModel = os.path.join(pathToStoreModelDir, "model.ckpt")
-pathToLoadModelDir = os.path.join(pathToModelsDir, "model"+loadModelId)
+pathToLoadModelDir = os.path.join(pathToModelsDir, loadModelId)
 pathToLoadModel = os.path.join(pathToLoadModelDir, "model.ckpt")
 
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
@@ -131,7 +131,7 @@ class GANChat():
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		trainingMode = MODE.preTrainGenerator
-		loadModel = True
+		loadModel = False
 		saveModel = True
 		evaluate = True
 
