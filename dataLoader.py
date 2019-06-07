@@ -58,7 +58,7 @@ class DataLoader():
 		return post, reply
 
 	def getTestBatch(self, size):
-		batch = random.sample(testDatasetSize, size)
+		batch = random.sample(self.testDataset, size)
 		post = []
 		reply = []
 		for datapoint in batch:

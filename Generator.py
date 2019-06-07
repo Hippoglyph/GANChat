@@ -31,10 +31,10 @@ class Generator():
 
 	def pretrain(self, sess, post, reply):
 		noise = np.zeros((self.batch_size, self.noiseSize))
-		loss_summary,_ = sess.run(
-				[self.pretrain_summary, self.pretrain_update],
+		loss_summary, loss, _ = sess.run(
+				[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
 				{self.post_seq: post,self.reply_seq: reply, self.noise: noise})
-		return loss_summary
+		return loss_summary, loss
 
 	def rolloutStep(self, sess, post, reply, keepIndex):
 		return sess.run(
@@ -43,17 +43,18 @@ class Generator():
 
 	def calculateReward(self, sess, post, reply, tokenSampleRate, discriminator):
 		rewards = np.zeros((self.batch_size, self.sequence_length))
-		for keepNumber in range(self.sequence_length):
+		for keepNumber in range(1,self.sequence_length): #FIX HERE THIS IS WRONG
 			for _ in range(tokenSampleRate):
 				sampleReply = self.rolloutStep(sess, post, reply, keepNumber)
-				rewards[:,keepNumber] += discriminator.evaluate(sess, post, sampleReply)
+				rewards[:,keepNumber-1] += discriminator.evaluate(sess, post, sampleReply)
+			rewards[:,-1] = discriminator.evaluate(sess, post, reply) * tokenSampleRate
 		return rewards / tokenSampleRate
 
 	def train(self, sess, post, reply, rewards):
-		loss_summary,_ = sess.run(
-				[self.train_summary, self.update],
+		loss_summary, loss, _ = sess.run(
+				[self.train_summary, self.loss, self.update],
 				{self.post_seq: post, self.reply_seq: reply, self.rewards: rewards})
-		return loss_summary
+		return loss_summary, loss
 
 	def buildGraph(self):
 		with tf.name_scope("generator"):

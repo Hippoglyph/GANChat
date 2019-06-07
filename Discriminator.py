@@ -15,10 +15,10 @@ class Discriminator():
 		self.buildGraph()
 
 	def train(self, sess, post, reply, labels):
-		loss_summary,_ = sess.run(
-				[self.loss_summary, self.update_params],
+		loss_summary, loss, _ = sess.run(
+				[self.loss_summary, self.loss, self.update_params],
 				{self.post_seq: post,self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: self.dropout})
-		return loss_summary
+		return loss_summary, loss
 
 	def evaluate(self, sess, post, reply):
 		return sess.run(
