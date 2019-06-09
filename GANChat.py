@@ -26,7 +26,7 @@ pathToLoadModel = os.path.join(pathToLoadModelDir, "model.ckpt")
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, storeModelId)
 iterationFile = "iteration"
-timeFile = "timestamp"
+timeFile = "trainingTime"
 
 class MODE:
 	preTrainGenerator = 0
@@ -45,9 +45,10 @@ class LossTracker():
 		self.timePerItAcc = 0.0
 		self.printEvery = 60
 		self.timeSinceLastLog = time.time()
+		self.appendSeconds = 0
 
-	def overrideStartTime(self, startTime):
-		self.startTime = startTime
+	def addSeconds(self, seconds):
+		self.appendSeconds = seconds
 
 	def log(self, genLoss, discLoss, iteration, epoch):
 		self.timePerItNum += 1
@@ -67,7 +68,7 @@ class LossTracker():
 				logString += ", DiscLoss {:>5.3f}".format(self.discLossAcc/self.discLossNum)
 			logString += ", {:>6.3f} sec/iteration".format(self.timePerItAcc/self.timePerItNum)
 			logString += ", epoch {:>4}".format(epoch)
-			logString += ", hour {:>4}".format(int((time.time()-self.startTime)/(60*60)))
+			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
 			logString += ", Time " + time.strftime("%H:%M:%S", time.localtime(time.time()))
 			print(logString)
 			self.genLossNum = 0
@@ -91,17 +92,21 @@ class GANChat():
 		self.learning_rate = 0.0001
 		self.token_sample_rate = 16
 		self.storeModelEvery = 60*10
+		self.timeStampLastSave = time.time()
 
 	def saveModel(self, sess, saver, saveModel, iteration):
 		if saveModel:
 			if not os.path.exists(pathToStoreModelDir):
 				os.makedirs(pathToStoreModelDir)
-				with open(os.path.join(pathToStoreModelDir, timeFile), 'w', encoding="utf-8") as file:
-					file.write(str(time.time()))
 			print("Saving model...")
 			save_path = saver.save(sess, pathToStoreModel)
 			with open(os.path.join(pathToStoreModelDir, iterationFile), 'w', encoding="utf-8") as file:
 				file.write(str(iteration))
+			with open(os.path.join(pathToLoadModelDir, timeFile), 'r', encoding="utf-8") as file:
+				totalSeconds = file.read()
+			with open(os.path.join(pathToStoreModelDir, timeFile), 'w', encoding="utf-8") as file:
+				file.write(str(int(int(time.time() - self.timeStampLastSave) + int(totalSeconds))))
+			self.timeStampLastSave = time.time()
 			print("Model saved ("+str(iteration)+"): " + save_path)
 
 	def loadModel(self, sess, saver):
@@ -115,7 +120,7 @@ class GANChat():
 		with open(os.path.join(pathToLoadModelDir, timeFile), 'r', encoding="utf-8") as file:
 			startime = file.read()
 		print("Model loaded "+pathToLoadModel+ " (" + str(iteration)+")")
-		return int(iteration), float(startime)
+		return int(iteration), int(startime)
 
 	def evaluate(self, sess, iteration, batch_size):
 		print("Evaluating...")
@@ -158,7 +163,7 @@ class GANChat():
 				writer = tf.summary.FileWriter(tensorboardDir, sess.graph)
 				if loadModel:
 					iterationStart, startTime = self.loadModel(sess, saver)
-					lossTracker.overrideStartTime(startTime)
+					lossTracker.addSeconds(startTime)
 				else:
 					print("Initialize new graph")
 					sess.run(tf.global_variables_initializer())
