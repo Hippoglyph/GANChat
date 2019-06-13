@@ -1,6 +1,48 @@
 import tensorflow as tf
 from LSTM import LSTM_recurrent_unit, LSTM_output_unit
 import numpy as np
+from tensorflow.contrib import rnn, seq2seq
+from tensorflow.contrib.seq2seq import Helper
+
+class decoderHelper(Helper):
+	def __init__(self, keep_length, sequence_length, embedding, reply_seq_embedding, start_token_embedding, W, b, _batch_size):
+		self.keep_length = keep_length
+		self.sequence_length = sequence_length
+		self.embedding = embedding
+		self.W = W
+		self.b = b
+		self._batch_size = _batch_size
+		self.start_embedding = start_token_embedding
+		self.reply_embedding = reply_seq_embedding
+
+	@property
+	def batch_size(self):
+		return self._batch_size
+
+	@property
+	def sample_ids_shape(self):
+		return tf.TensorShape([])
+
+	@property
+	def sample_ids_dtype(self):
+		return tf.int32
+
+	def initialize(self, name=None):
+		finished = tf.tile([False], [self._batch_size])
+		return finished, self.start_embedding
+
+	def sample(self, time, outputs, state, name=None):
+		logits = tf.add(tf.matmul(state.h, self.W), self.b)
+		prob = tf.nn.softmax(logits)
+		return tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self._batch_size])
+
+	def next_inputs(self, time, outputs, state, sample_ids, name=None):
+		finished= tf.greater_equal(time+1, self.sequence_length)
+		if self.keep_length <= 0:
+			next_token = self.embedding.getEmbedding(sample_ids)
+		else:
+			next_token = tf.cond(tf.logical_or(tf.greater_equal(time+1, self.keep_length), finished), lambda: self.embedding.getEmbedding(sample_ids), lambda: self.reply_embedding[:,time,:])
+		return finished, next_token, state
 
 class Generator():
 	def __init__(self, embedding, sequence_length, start_token, vocab_size, learning_rate, batch_size):
@@ -13,7 +55,6 @@ class Generator():
 		self.decoder_units = self.encoder_units + self.noiseSize
 		self.vocab_size = vocab_size
 		self.batch_size = batch_size
-		self.params = []
 		self.learning_rate = learning_rate
 		self.buildGraph()
 
@@ -57,8 +98,8 @@ class Generator():
 		return loss_summary, loss
 
 	def buildGraph(self):
-		with tf.name_scope("generator"):
-			with tf.name_scope("inputs"):
+		with tf.variable_scope("generator") as generator_scope:
+			with tf.variable_scope("inputs"):
 				self.post_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="post_sequence")
 				self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
 				self.rewards = tf.placeholder(tf.float32, shape=[self.batch_size, self.sequence_length], name="rewards")
@@ -66,97 +107,67 @@ class Generator():
 			
 				#self.batch_size = tf.shape(self.post_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
-			
-				self.params.extend(self.embedding.getParams())
+				self.embedded_start_token = self.embedding.getEmbedding(self.start_token)
 
 				self.embedded_post = self.embedding.getEmbedding(self.post_seq)
-				#with tf.device("/cpu:0"):
-				self.embedded_post_transposed = tf.transpose(self.embedded_post, perm=[1, 0, 2]) # sequence_length x batch_size x embedding_size
 
-			with tf.name_scope("encoder"):
+				self.embedded_reply = self.embedding.getEmbedding(self.reply_seq)
 
-				embedded_post_lt = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
-				embedded_post_lt = embedded_post_lt.unstack(self.embedded_post_transposed)
-				
-				self.encoder_LSTM = LSTM_recurrent_unit(self.embedding.embedding_size,self.encoder_units, "encoder_1", self.params)
+			with tf.variable_scope("encoder") as encoder_scope:
 
-				eh0 = tf.zeros([self.batch_size, self.encoder_units])
-				eh0 = tf.stack([eh0, eh0])
+				encoder_RNN = rnn.LSTMCell(self.encoder_units)
 
-				def encoder_loop(i, x_t, h_tm1):
-					h_t = self.encoder_LSTM(x_t, h_tm1)
-					return i + 1, embedded_post_lt.read(i), h_t
+				_, self.encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(encoder_RNN, self.embedded_post, dtype=tf.float32)
 
-				_,_, self.encoder_final_hidden_memory_tuple = tf.while_loop(
-					cond=lambda i, _1, _2: i < self.sequence_length,
-					body=encoder_loop,
-					loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), eh0))
+			with tf.variable_scope("decoder"):
 
-			with tf.name_scope("decoder"):
+				decoder_RNN = rnn.LSTMCell(self.encoder_units)
+				decoder_RNN_W0 = tf.Variable(tf.random_normal([self.encoder_units, self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_W0")
+				decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_B0")
 
-				self.decoder_LSTM = LSTM_recurrent_unit(self.embedding.embedding_size,self.decoder_units, "decoder_1",self.params)
-				self.decoder_LSTM_output = LSTM_output_unit(self.vocab_size,self.decoder_units, "decoder_1", self.params)
-
-				with tf.name_scope("noise"):
-					h0, c0 = tf.unstack(self.encoder_final_hidden_memory_tuple)
+				with tf.variable_scope("noise"):
+					h0 = self.encoder_final_hidden_memory_tuple[1]
+					c0 = self.encoder_final_hidden_memory_tuple[0]
 					h0 = tf.concat([h0, self.noise], 1)
 					c0 = tf.concat([c0, self.noise], 1)
-					decoderH0 = tf.stack([h0,c0])
+					decoderH0 = rnn.LSTMStateTuple(c0,h0)
 
-				with tf.name_scope("generate"):
-
-					reply_lt = tf.TensorArray(dtype=tf.int32, size=self.sequence_length)
-					reply_lt = reply_lt.unstack(tf.transpose(self.reply_seq, perm=[1,0]))
+				with tf.variable_scope("generate"):
 
 					seqences = []
 					seqences_logits = []
 					for iteration_number in range(self.sequence_length+1):
-						gen_seq = tf.TensorArray(dtype=tf.int32, size=self.sequence_length)
-						gen_seq_logits = tf.TensorArray(dtype=tf.float32, size=self.sequence_length)
+						decoder = seq2seq.BasicDecoder(
+							cell=decoder_RNN,
+							helper=decoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, decoder_RNN_W0, decoder_RNN_B0, self.batch_size),
+							initial_state=self.encoder_final_hidden_memory_tuple
+							)
 
-						def gen_loop(i, x_t, h_tm1, gen_seq, gen_seq_logits, keep_length):
-							h_t = self.decoder_LSTM(x_t, h_tm1)
-							o_t = self.decoder_LSTM_output(h_t) # batch_size x vocab_size
-							prob = tf.nn.softmax(o_t)
-							next_token = tf.cond(i >= keep_length, lambda: tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self.batch_size]), lambda: reply_lt.read(i))
-							x_tp1 = self.embedding.getEmbedding(next_token)
-							gen_seq = gen_seq.write(i, next_token)
-							gen_seq_logits = gen_seq_logits.write(i, o_t)
-							return i + 1, x_tp1, h_t, gen_seq, gen_seq_logits, keep_length
+						final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)
 
-						_,_,_,gen_seq, gen_seq_logits,_ = tf.while_loop(
-							cond=lambda i, _1, _2, _3, _4, _5: i < self.sequence_length,
-							body=gen_loop,
-							loop_vars= (tf.constant(0,dtype=tf.int32), self.embedding.getEmbedding(self.start_token), decoderH0, gen_seq, gen_seq_logits, tf.constant(iteration_number,dtype=tf.int32)))
-
-						seqences.append(tf.transpose(gen_seq.stack(), perm=[1,0])) # batch_size x sequence_length
-						seqences_logits.append(tf.transpose(gen_seq_logits.stack(), perm=[1,0,2])) # batch_size x sequence_length x vocab_size
+						seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
+						logits = tf.add(tf.tensordot(final_outputs.rnn_output, decoder_RNN_W0, axes=[[2], [0]]), decoder_RNN_B0[None, None,:])
+						seqences_logits.append(tf.reshape(logits,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
 
 					self.seqences = seqences
 					self.seqences_logits = seqences_logits
 
-			with tf.name_scope("pretrain"):
+			self.generatorVariables = [v for v in tf.trainable_variables() if v.name.startswith(generator_scope.name) or v.name.startswith(self.embedding.getNameScope())]
+
+			with tf.variable_scope("pretrain"):
 				#logits = tf.log(tf.clip_by_value(self.seqences_logits[self.sequence_length], 1e-8,1-1e-8))
 				self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=self.seqences_logits[self.sequence_length]))
 				pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.params), 5.0)
-				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.params))
+				self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), 5.0)
+				self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.generatorVariables))
 				self.pretrain_summary = tf.summary.scalar("generator_pretrain_loss", self.pretrain_loss)
 
-			with tf.name_scope("train"):
+			with tf.variable_scope("train"):
 				genSequence = self.seqences[self.sequence_length]
 				genProb = tf.nn.softmax(self.seqences_logits[self.sequence_length])
 				genLogProb = tf.log(tf.clip_by_value(genProb, 1e-8,1-1e-8))
 				self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(genSequence, self.vocab_size) * genLogProb, -1) * self.rewards)
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-				self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.params), 5.0)
-				self.update = optimizer.apply_gradients(zip(self.grad, self.params))
+				self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
+				self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))
 				self.train_summary = tf.summary.scalar("generator_loss", self.loss)
-
-			
-
-
-	
-	
-	
-				

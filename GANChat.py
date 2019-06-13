@@ -13,8 +13,11 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 #import os
 #os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-storeModelId = "LSTMpretrain"
-loadModelId = "LSTMpretrain"
+#storeModelId = "LSTMpretrain"
+#loadModelId = "LSTMpretrain"
+
+storeModelId = "LSTMpretrainNew"
+loadModelId = "LSTMpretrainNew"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -81,28 +84,19 @@ class LossTracker():
 
 class GANChat():
 	def __init__(self):
-		tf.reset_default_graph()
-		self.batch_size = 8
-		self.tokenProcessor = TokenProcessor()
-		self.data_loader = DataLoader(self.batch_size)
-		self.sequence_length = self.data_loader.getSequenceLength()
-		self.vocab_size = self.tokenProcessor.getVocabSize()
-		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size = 32
-		self.learning_rate = 0.0001
-		self.token_sample_rate = 16
-		self.storeModelEvery = 60*10
-		self.timeStampLastSave = time.time()
+		pass
 
 	def saveModel(self, sess, saver, saveModel, iteration):
 		if saveModel:
 			if not os.path.exists(pathToStoreModelDir):
 				os.makedirs(pathToStoreModelDir)
+				with open(os.path.join(pathToStoreModelDir, timeFile), 'w', encoding="utf-8") as file:
+					file.write(str(0))
 			print("Saving model...")
 			save_path = saver.save(sess, pathToStoreModel)
 			with open(os.path.join(pathToStoreModelDir, iterationFile), 'w', encoding="utf-8") as file:
 				file.write(str(iteration))
-			with open(os.path.join(pathToLoadModelDir, timeFile), 'r', encoding="utf-8") as file:
+			with open(os.path.join(pathToStoreModelDir, timeFile), 'r', encoding="utf-8") as file:
 				totalSeconds = file.read()
 			with open(os.path.join(pathToStoreModelDir, timeFile), 'w', encoding="utf-8") as file:
 				file.write(str(int(int(time.time() - self.timeStampLastSave) + int(totalSeconds))))
@@ -141,13 +135,26 @@ class GANChat():
 		print("Evaluating stored (" + str(iteration)+")")
 
 	def train(self):
+		tf.reset_default_graph()
+		self.batch_size = 8
+		self.tokenProcessor = TokenProcessor()
+		self.data_loader = DataLoader(self.batch_size)
+		self.sequence_length = self.data_loader.getSequenceLength()
+		self.vocab_size = self.tokenProcessor.getVocabSize()
+		self.start_token = self.tokenProcessor.getStartToken()
+		self.embedding_size = 32
+		self.learning_rate = 0.0001
+		self.token_sample_rate = 16
+		self.storeModelEvery = 60*10
+		self.timeStampLastSave = time.time()
+
 		self.embedding = Embedding(self.vocab_size, self.embedding_size)
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		trainingMode = MODE.preTrainGenerator
-		loadModel = True
-		saveModel = True
+		loadModel = False
+		saveModel = False
 		evaluate = True
 
 		saver = tf.train.Saver()
@@ -222,7 +229,27 @@ class GANChat():
 
 			except (KeyboardInterrupt, SystemExit):
 				self.saveModel(sess, saver, saveModel, currentIteration)
-				
+
+	def play(self):
+		self.embedding = Embedding(6, 5)
+		self.discriminator = Discriminator(self.embedding, 4, 0, 0.001, 3)
+		self.generator = Generator(self.embedding, 4, 0, 6, 0.001, 3)
+
+		dummyPost = [[0,1,2,3],
+					[3,2,1,0],
+					[2,2,3,1]]
+		dummyReply = dummyPost
+
+		with tf.Session() as sess:
+			sess.run(tf.global_variables_initializer())
+			result = sess.run(
+				[self.generator.generatorVariables],
+				{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
+			print(len(result[0]))
+			#variables_names = [v.name for v in tf.trainable_variables() if v.name.startswith("generator") or v.name.startswith(self.embedding.getNameScope())]
+			#values = sess.run(variables_names)
+			#for k,v in zip(variables_names, values):
+			#	print(k)
 				
 if __name__ == "__main__":
 	GANChat().train()
