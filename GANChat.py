@@ -231,6 +231,7 @@ class GANChat():
 				self.saveModel(sess, saver, saveModel, currentIteration)
 
 	def play(self):
+		tf.reset_default_graph()
 		self.embedding = Embedding(6, 5)
 		self.discriminator = Discriminator(self.embedding, 4, 0, 0.001, 3)
 		self.generator = Generator(self.embedding, 4, 0, 6, 0.001, 3)
@@ -242,14 +243,20 @@ class GANChat():
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
-			result = sess.run(
-				[self.generator.generatorVariables],
-				{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
-			print(len(result[0]))
-			#variables_names = [v.name for v in tf.trainable_variables() if v.name.startswith("generator") or v.name.startswith(self.embedding.getNameScope())]
+			#result = sess.run(
+			#	[self.discriminator.discriminatorVariables],
+			#	{self.discriminator.post_seq: dummyPost, self.discriminator.reply_seq: dummyReply})
+			#print(len(result[0]))
+
+			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
+			result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
+
+			print(result)
+
+			#variables_names = [v.name for v in tf.trainable_variables()]
 			#values = sess.run(variables_names)
 			#for k,v in zip(variables_names, values):
 			#	print(k)
 				
 if __name__ == "__main__":
-	GANChat().train()
+	GANChat().play()
