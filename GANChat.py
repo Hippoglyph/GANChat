@@ -120,7 +120,6 @@ class GANChat():
 		return int(iteration), int(startime)
 
 	def evaluate(self, sess, iteration, batch_size, noise):
-		print("Evaluating...")
 		if not os.path.exists(pathToEvaluateDir):
 			os.makedirs(pathToEvaluateDir)
 		post, reply = self.data_loader.getTestBatch(batch_size)

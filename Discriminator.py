@@ -50,13 +50,13 @@ class Discriminator():
 
 					self.post_encoder_RNN = rnn.LSTMCell(self.encoder_units)
 
-					_, self.post_encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(self.post_encoder_RNN, self.embedded_post, dtype=tf.float32)
+					_, self.post_encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(self.post_encoder_RNN, self.embedded_post, dtype=tf.float32, initial_state=self.post_encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
 
 				with tf.variable_scope("reply_encoder"):
 
 					self.reply_encoder_RNN = rnn.LSTMCell(self.encoder_units)
 
-					_, self.reply_encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(self.reply_encoder_RNN, self.embedded_reply, dtype=tf.float32)
+					_, self.reply_encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(self.reply_encoder_RNN, self.embedded_reply, dtype=tf.float32, initial_state=self.reply_encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
 				
 				post_last_hidden = self.post_encoder_final_hidden_memory_tuple[1]
 				reply_last_hidden = self.reply_encoder_final_hidden_memory_tuple[1]

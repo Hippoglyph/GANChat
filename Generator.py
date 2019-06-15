@@ -140,7 +140,7 @@ class Generator():
 
 			encoder_RNN = rnn.LSTMCell(self.encoder_units)
 
-			_, self.encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(encoder_RNN, self.embedded_post, dtype=tf.float32)
+			_, self.encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(encoder_RNN, self.embedded_post, dtype=tf.float32, initial_state=encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
 
 		with tf.variable_scope("decoder"):
 
