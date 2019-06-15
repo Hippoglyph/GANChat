@@ -144,8 +144,8 @@ class Generator():
 
 		with tf.variable_scope("decoder"):
 
-			decoder_RNN = rnn.LSTMCell(self.encoder_units)
-			decoder_RNN_W0 = tf.Variable(tf.random_normal([self.encoder_units, self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_W0")
+			decoder_RNN = rnn.LSTMCell(self.decoder_units)
+			decoder_RNN_W0 = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_W0")
 			decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_B0")
 
 			with tf.variable_scope("noise"):
@@ -163,7 +163,7 @@ class Generator():
 					decoder = seq2seq.BasicDecoder(
 						cell=decoder_RNN,
 						helper=decoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, decoder_RNN_W0, decoder_RNN_B0, self.batch_size),
-						initial_state=self.encoder_final_hidden_memory_tuple
+						initial_state=decoderH0
 						)
 
 					final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)

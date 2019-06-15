@@ -80,8 +80,8 @@ class Discriminator():
 
 			with tf.variable_scope("train"):
 				self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
-				for r in self.discriminatorVariables:
-					print(r.name)
+				#for r in self.discriminatorVariables:
+					#print(r.name)
 				self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=self.score))
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0)

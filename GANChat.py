@@ -16,8 +16,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 #storeModelId = "LSTMpretrain"
 #loadModelId = "LSTMpretrain"
 
-storeModelId = "LSTMpretrainNew"
-loadModelId = "LSTMpretrainNew"
+storeModelId = "ChoLSTMpretrain"
+loadModelId = "ChoLSTMpretrain"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -46,9 +46,12 @@ class LossTracker():
 		self.genLossAcc = 0.0
 		self.discLossAcc = 0.0
 		self.timePerItAcc = 0.0
-		self.printEvery = 60
+		self.printEvery = 60*10
 		self.timeSinceLastLog = time.time()
 		self.appendSeconds = 0
+
+	def printEverySecond(self, second):
+		self.printEvery = second
 
 	def addSeconds(self, seconds):
 		self.appendSeconds = seconds
@@ -116,12 +119,12 @@ class GANChat():
 		print("Model loaded "+pathToLoadModel+ " (" + str(iteration)+")")
 		return int(iteration), int(startime)
 
-	def evaluate(self, sess, iteration, batch_size):
+	def evaluate(self, sess, iteration, batch_size, noise):
 		print("Evaluating...")
 		if not os.path.exists(pathToEvaluateDir):
 			os.makedirs(pathToEvaluateDir)
 		post, reply = self.data_loader.getTestBatch(batch_size)
-		fakeReply = self.generator.generate(sess, post)
+		fakeReply = self.generator.generate(sess, post, noise)
 
 		dataPoints = []
 
@@ -144,7 +147,7 @@ class GANChat():
 		self.start_token = self.tokenProcessor.getStartToken()
 		self.embedding_size = 32
 		self.learning_rate = 0.0001
-		self.token_sample_rate = 16
+		self.token_sample_rate = 8
 		self.storeModelEvery = 60*10
 		self.timeStampLastSave = time.time()
 
@@ -154,7 +157,7 @@ class GANChat():
 
 		trainingMode = MODE.preTrainGenerator
 		loadModel = False
-		saveModel = False
+		saveModel = True
 		evaluate = True
 
 		saver = tf.train.Saver()
@@ -225,7 +228,7 @@ class GANChat():
 						self.saveModel(sess, saver, saveModel, iteration)
 						storedModelTimestamp = time.time()
 						if evaluate:
-							self.evaluate(sess, iteration, self.batch_size)
+							self.evaluate(sess, iteration, self.batch_size, noise = trainingMode == MODE.adviserialTraining)
 
 			except (KeyboardInterrupt, SystemExit):
 				self.saveModel(sess, saver, saveModel, currentIteration)
@@ -244,19 +247,26 @@ class GANChat():
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
 			#result = sess.run(
-			#	[self.discriminator.discriminatorVariables],
-			#	{self.discriminator.post_seq: dummyPost, self.discriminator.reply_seq: dummyReply})
-			#print(len(result[0]))
+			#	[self.generator.lastDist],
+			#	{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
+			#print(result)
 
 			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
-			result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
+			#result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
+			#print(result)
 
-			print(result)
+			#for _ in range(100):
+				#_, loss = self.discriminator.train(sess, dummyPost, dummyReply, [0,1,0])
+				#print(loss)
 
+			#result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
+			#print(result)
+			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
+			#print(result)
 			#variables_names = [v.name for v in tf.trainable_variables()]
 			#values = sess.run(variables_names)
 			#for k,v in zip(variables_names, values):
 			#	print(k)
 				
 if __name__ == "__main__":
-	GANChat().play()
+	GANChat().train()
