@@ -112,8 +112,9 @@ class Generator():
 	def buildTrainingGraph(self, sequence, logits):
 		with tf.variable_scope("training"):
 			self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
-			for r in self.generatorVariables:
-				print(r.name)
+			#for r in self.generatorVariables:
+				#print(r.name)
+				#print(r.shape)
 
 			with tf.variable_scope("pretrain"):
 				#logits = tf.log(tf.clip_by_value(self.seqences_logits[self.sequence_length], 1e-8,1-1e-8))
@@ -214,8 +215,8 @@ class Generator():
 		with tf.variable_scope(self.scope_name):
 			self.buildInputGraph()
 
-			self.seqences, self.seqences_logits = self.buildChoModel()
-			#self.seqences, self.seqences_logits = self.buildBahdanauModel()
+			#self.seqences, self.seqences_logits = self.buildChoModel()
+			self.seqences, self.seqences_logits = self.buildBahdanauModel()
 
 			self.buildTrainingGraph(self.seqences[self.sequence_length], self.seqences_logits[self.sequence_length])
 			

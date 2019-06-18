@@ -71,3 +71,6 @@ class DataLoader():
 
 	def getEpoch(self):
 		return self.epochNumber
+
+	def getEpochProgress(self):
+		return self.pointer/self.trainingDatasetSize

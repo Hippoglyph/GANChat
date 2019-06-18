@@ -10,16 +10,12 @@ import time
 import json
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
-#import os
-#os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-#storeModelId = "LSTMpretrain"
-#loadModelId = "LSTMpretrain"
 
-#storeModelId = "ChoLSTMpretrain"
-#loadModelId = "ChoLSTMpretrain"
-storeModelId = "ChoBahdanauPretrain"
-loadModelId = "ChoBahdanauPretrain"
+storeModelId = "ChoLSTMpretrain"
+loadModelId = "ChoLSTMpretrain"
+#storeModelId = "ChoBahdanauPretrain"
+#loadModelId = "ChoBahdanauPretrain"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -58,7 +54,7 @@ class LossTracker():
 	def addSeconds(self, seconds):
 		self.appendSeconds = seconds
 
-	def log(self, genLoss, discLoss, iteration, epoch):
+	def log(self, genLoss, discLoss, iteration, epochProgress):
 		self.timePerItNum += 1
 		self.timePerItAcc += time.time() - self.timeSinceLastLog
 		self.timeSinceLastLog = time.time()
@@ -75,7 +71,7 @@ class LossTracker():
 			if discLoss:
 				logString += ", DiscLoss {:>5.3f}".format(self.discLossAcc/self.discLossNum)
 			logString += ", {:>6.3f} sec/iteration".format(self.timePerItAcc/self.timePerItNum)
-			logString += ", epoch {:>4}".format(epoch)
+			logString += ", epoch {:>3.2f}%".format(epoch*100)
 			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
 			logString += ", Time " + time.strftime("%H:%M:%S", time.localtime(time.time()))
 			print(logString)
@@ -223,7 +219,7 @@ class GANChat():
 								summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 							writer.add_summary(summary, iteration)
 
-					lossTracker.log(genLoss, discLoss, iteration, self.data_loader.getEpoch())
+					lossTracker.log(genLoss, discLoss, iteration, self.data_loader.getEpochProgress())
 
 					if time.time() - storedModelTimestamp >= self.storeModelEvery: #Store every self.storeModelEvery second
 						self.saveModel(sess, saver, saveModel, iteration)
