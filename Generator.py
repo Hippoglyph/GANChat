@@ -181,7 +181,7 @@ class Generator():
 
 			(encoder_outputs_fw, encoder_outputs_bw), encoder_final_state = tf.nn.bidirectional_dynamic_rnn(encoder_RNN_fw, encoder_RNN_bw, self.embedded_post, dtype=tf.float32, initial_state_fw=encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32),initial_state_bw=encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32))
 
-			encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 1)
+			encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 2)
 
 		with tf.variable_scope("decoder"):
 

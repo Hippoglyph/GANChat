@@ -270,4 +270,4 @@ class GANChat():
 			#	print(k)
 				
 if __name__ == "__main__":
-	GANChat().train()
+	GANChat().play()
