@@ -3,13 +3,11 @@ import numpy as np
 from tensorflow.contrib import rnn, seq2seq
 from tensorflow.contrib.seq2seq import Helper
 
-class decoderHelper(Helper):
-	def __init__(self, keep_length, sequence_length, embedding, reply_seq_embedding, start_token_embedding, W, b, _batch_size):
+class DecoderHelper(Helper):
+	def __init__(self, keep_length, sequence_length, embedding, reply_seq_embedding, start_token_embedding, _batch_size):
 		self.keep_length = keep_length
 		self.sequence_length = sequence_length
 		self.embedding = embedding
-		self.W = W
-		self.b = b
 		self._batch_size = _batch_size
 		self.start_embedding = start_token_embedding
 		self.reply_embedding = reply_seq_embedding
@@ -31,8 +29,7 @@ class decoderHelper(Helper):
 		return finished, self.start_embedding
 
 	def sample(self, time, outputs, state, name=None):
-		logits = tf.add(tf.matmul(outputs, self.W), self.b)
-		prob = tf.nn.softmax(logits)
+		prob = tf.nn.softmax(outputs)
 		return tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self._batch_size])
 
 	def next_inputs(self, time, outputs, state, sample_ids, name=None):
@@ -115,8 +112,8 @@ class Generator():
 	def buildTrainingGraph(self, sequence, logits):
 		with tf.variable_scope("training"):
 			self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
-			#for r in self.generatorVariables:
-			#	print(r.name)
+			for r in self.generatorVariables:
+				print(r.name)
 
 			with tf.variable_scope("pretrain"):
 				#logits = tf.log(tf.clip_by_value(self.seqences_logits[self.sequence_length], 1e-8,1-1e-8))
@@ -145,8 +142,7 @@ class Generator():
 		with tf.variable_scope("decoder"):
 
 			decoder_RNN = rnn.LSTMCell(self.decoder_units)
-			decoder_RNN_W0 = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_W0")
-			decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_B0")
+			decoder_RNN_projection = tf.layers.Dense(units=self.vocab_size, use_bias=True, kernel_initializer=tf.initializers.random_normal(0,0.1))
 
 			with tf.variable_scope("noise"):
 				h0 = encoder_final_hidden_memory_tuple[1]
@@ -161,15 +157,15 @@ class Generator():
 				for iteration_number in range(self.sequence_length+1):
 					decoder = seq2seq.BasicDecoder(
 						cell=decoder_RNN,
-						helper=decoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, decoder_RNN_W0, decoder_RNN_B0, self.batch_size),
-						initial_state=decoderH0
+						helper=DecoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, self.batch_size),
+						initial_state=decoderH0,
+						output_layer=decoder_RNN_projection
 						)
 
 					final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)
 
 					seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
-					logits = tf.add(tf.tensordot(final_outputs.rnn_output, decoder_RNN_W0, axes=[[2], [0]]), decoder_RNN_B0[None, None,:])
-					seqences_logits.append(tf.reshape(logits,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
+					seqences_logits.append(tf.reshape(final_outputs.rnn_output,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
 
 		return seqences, seqences_logits
 
@@ -186,8 +182,7 @@ class Generator():
 		with tf.variable_scope("decoder"):
 
 			decoder_RNN = rnn.GRUCell(self.decoder_units)
-			decoder_RNN_W0 = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=0.1), name="GRU_output_decoder_1_W0")
-			decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="GRU_output_decoder_1_B0")
+			decoder_RNN_projection = tf.layers.Dense(units=self.vocab_size, use_bias=True, kernel_initializer=tf.initializers.random_normal(0,0.1))
 
 			attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs)
 
@@ -198,20 +193,20 @@ class Generator():
 				decoderH0 = tf.concat([decoderH0, self.noise], 1) # batch_size x decoder_units
 
 			with tf.variable_scope("generate"):
-					seqences = []
-					seqences_logits = []
-					for iteration_number in range(self.sequence_length+1):
-						decoder = seq2seq.BasicDecoder(
-							cell=attention_RNN,
-							helper=decoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, decoder_RNN_W0, decoder_RNN_B0, self.batch_size),
-							initial_state=attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0)
-							)
+				seqences = []
+				seqences_logits = []
+				for iteration_number in range(self.sequence_length+1):
+					decoder = seq2seq.BasicDecoder(
+						cell=attention_RNN,
+						helper=DecoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, self.batch_size),
+						initial_state=attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0),
+						output_layer=decoder_RNN_projection
+						)
 
-						final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)
+					final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)
 
-						seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
-						logits = tf.add(tf.tensordot(final_outputs.rnn_output, decoder_RNN_W0, axes=[[2], [0]]), decoder_RNN_B0[None, None,:])
-						seqences_logits.append(tf.reshape(logits,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
+					seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
+					seqences_logits.append(tf.reshape(final_outputs.rnn_output,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
 
 		return seqences, seqences_logits
 
@@ -219,8 +214,8 @@ class Generator():
 		with tf.variable_scope(self.scope_name):
 			self.buildInputGraph()
 
-			#self.seqences, self.seqences_logits = self.buildChoModel()
-			self.seqences, self.seqences_logits = self.buildBahdanauModel()
+			self.seqences, self.seqences_logits = self.buildChoModel()
+			#self.seqences, self.seqences_logits = self.buildBahdanauModel()
 
 			self.buildTrainingGraph(self.seqences[self.sequence_length], self.seqences_logits[self.sequence_length])
 			
