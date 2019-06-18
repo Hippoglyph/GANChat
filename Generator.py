@@ -31,7 +31,7 @@ class decoderHelper(Helper):
 		return finished, self.start_embedding
 
 	def sample(self, time, outputs, state, name=None):
-		logits = tf.add(tf.matmul(state.h, self.W), self.b)
+		logits = tf.add(tf.matmul(outputs, self.W), self.b)
 		prob = tf.nn.softmax(logits)
 		return tf.reshape(tf.multinomial(tf.log(prob), 1, output_dtype=tf.int32), [self._batch_size])
 
@@ -140,7 +140,7 @@ class Generator():
 
 			encoder_RNN = rnn.LSTMCell(self.encoder_units)
 
-			_, self.encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(encoder_RNN, self.embedded_post, dtype=tf.float32, initial_state=encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
+			_, encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(encoder_RNN, self.embedded_post, dtype=tf.float32, initial_state=encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
 
 		with tf.variable_scope("decoder"):
 
@@ -149,14 +149,13 @@ class Generator():
 			decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="LSTM_output_decoder_1_B0")
 
 			with tf.variable_scope("noise"):
-				h0 = self.encoder_final_hidden_memory_tuple[1]
-				c0 = self.encoder_final_hidden_memory_tuple[0]
+				h0 = encoder_final_hidden_memory_tuple[1]
+				c0 = encoder_final_hidden_memory_tuple[0]
 				h0 = tf.concat([h0, self.noise], 1)
 				c0 = tf.concat([c0, self.noise], 1)
 				decoderH0 = rnn.LSTMStateTuple(c0,h0)
 
 			with tf.variable_scope("generate"):
-
 				seqences = []
 				seqences_logits = []
 				for iteration_number in range(self.sequence_length+1):
@@ -174,11 +173,54 @@ class Generator():
 
 		return seqences, seqences_logits
 
+	def buildBahdanauModel(self):
+		with tf.variable_scope("encoder"):
+
+			encoder_RNN_fw = rnn.GRUCell(self.encoder_units/2)
+			encoder_RNN_bw = rnn.GRUCell(self.encoder_units/2)
+
+			(encoder_outputs_fw, encoder_outputs_bw), encoder_final_state = tf.nn.bidirectional_dynamic_rnn(encoder_RNN_fw, encoder_RNN_bw, self.embedded_post, dtype=tf.float32, initial_state_fw=encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32),initial_state_bw=encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32))
+
+			encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 1)
+
+		with tf.variable_scope("decoder"):
+
+			decoder_RNN = rnn.GRUCell(self.decoder_units)
+			decoder_RNN_W0 = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=0.1), name="GRU_output_decoder_1_W0")
+			decoder_RNN_B0 = tf.Variable(tf.random_normal([self.vocab_size], stddev=0.1), name="GRU_output_decoder_1_B0")
+
+			attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs)
+
+			attention_RNN = seq2seq.AttentionWrapper(decoder_RNN, attention, attention_layer_size=self.decoder_units)
+
+			with tf.variable_scope("noise"):
+				decoderH0 = tf.zeros((self.batch_size, self.encoder_units), dtype=tf.float32)
+				decoderH0 = tf.concat([decoderH0, self.noise], 1) # batch_size x decoder_units
+
+			with tf.variable_scope("generate"):
+					seqences = []
+					seqences_logits = []
+					for iteration_number in range(self.sequence_length+1):
+						decoder = seq2seq.BasicDecoder(
+							cell=attention_RNN,
+							helper=decoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, decoder_RNN_W0, decoder_RNN_B0, self.batch_size),
+							initial_state=attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0)
+							)
+
+						final_outputs, _, _ = seq2seq.dynamic_decode(decoder=decoder, maximum_iterations=self.sequence_length)
+
+						seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
+						logits = tf.add(tf.tensordot(final_outputs.rnn_output, decoder_RNN_W0, axes=[[2], [0]]), decoder_RNN_B0[None, None,:])
+						seqences_logits.append(tf.reshape(logits,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
+
+		return seqences, seqences_logits
+
 	def buildGraph(self):
 		with tf.variable_scope(self.scope_name):
 			self.buildInputGraph()
 
-			self.seqences, self.seqences_logits = self.buildChoModel()
+			#self.seqences, self.seqences_logits = self.buildChoModel()
+			self.seqences, self.seqences_logits = self.buildBahdanauModel()
 
 			self.buildTrainingGraph(self.seqences[self.sequence_length], self.seqences_logits[self.sequence_length])
 			

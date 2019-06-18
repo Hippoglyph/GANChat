@@ -16,8 +16,10 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 #storeModelId = "LSTMpretrain"
 #loadModelId = "LSTMpretrain"
 
-storeModelId = "ChoLSTMpretrain"
-loadModelId = "ChoLSTMpretrain"
+#storeModelId = "ChoLSTMpretrain"
+#loadModelId = "ChoLSTMpretrain"
+storeModelId = "ChoBahdanauPretrain"
+loadModelId = "ChoBahdanauPretrain"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -147,7 +149,7 @@ class GANChat():
 		self.embedding_size = 32
 		self.learning_rate = 0.0001
 		self.token_sample_rate = 8
-		self.storeModelEvery = 60*10
+		self.storeModelEvery = 60*15
 		self.timeStampLastSave = time.time()
 
 		self.embedding = Embedding(self.vocab_size, self.embedding_size)
@@ -156,7 +158,7 @@ class GANChat():
 
 		trainingMode = MODE.preTrainGenerator
 		loadModel = False
-		saveModel = True
+		saveModel = False
 		evaluate = True
 
 		saver = tf.train.Saver()
@@ -245,10 +247,10 @@ class GANChat():
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
-			#result = sess.run(
-			#	[self.generator.lastDist],
-			#	{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
-			#print(result)
+			result = sess.run(
+				[self.generator.seqences],
+				{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
+			print(result)
 
 			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
 			#result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
