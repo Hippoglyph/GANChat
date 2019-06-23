@@ -12,10 +12,10 @@ from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
 
-storeModelId = "ChoLSTMpretrain"
-loadModelId = "ChoLSTMpretrain"
-#storeModelId = "ChoBahdanauPretrain"
-#loadModelId = "ChoBahdanauPretrain"
+#storeModelId = "ChoLSTMpretrain"
+#loadModelId = "ChoLSTMpretrain"
+storeModelId = "ChoBahdanauPretrain"
+loadModelId = "ChoBahdanauPretrain"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -71,7 +71,7 @@ class LossTracker():
 			if discLoss:
 				logString += ", DiscLoss {:>5.3f}".format(self.discLossAcc/self.discLossNum)
 			logString += ", {:>6.3f} sec/iteration".format(self.timePerItAcc/self.timePerItNum)
-			logString += ", epoch {:>3.2f}%".format(epoch*100)
+			logString += ", epoch {:>3.2f}%".format(epochProgress*100)
 			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
 			logString += ", Time " + time.strftime("%H:%M:%S", time.localtime(time.time()))
 			print(logString)
@@ -136,7 +136,7 @@ class GANChat():
 
 	def train(self):
 		tf.reset_default_graph()
-		self.batch_size = 8
+		self.batch_size = 32
 		self.tokenProcessor = TokenProcessor()
 		self.data_loader = DataLoader(self.batch_size)
 		self.sequence_length = self.data_loader.getSequenceLength()
@@ -153,8 +153,8 @@ class GANChat():
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		trainingMode = MODE.preTrainGenerator
-		loadModel = False
-		saveModel = False
+		loadModel = True
+		saveModel = True
 		evaluate = True
 
 		saver = tf.train.Saver()
@@ -266,4 +266,4 @@ class GANChat():
 			#	print(k)
 				
 if __name__ == "__main__":
-	GANChat().play()
+	GANChat().train()
