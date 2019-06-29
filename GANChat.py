@@ -14,8 +14,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 #storeModelId = "ChoLSTMpretrain"
 #loadModelId = "ChoLSTMpretrain"
-storeModelId = "ChoBahdanauPretrain"
-loadModelId = "ChoBahdanauPretrain"
+storeModelId = "ChoBahdanau"
+loadModelId = "ChoBahdanau"
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -40,9 +40,13 @@ class LossTracker():
 		self.printStamp = time.time()
 		self.genLossNum = 0
 		self.discLossNum = 0
+		self.positiveBalanceNum = 0
+		self.negativeBalanceNum = 0
 		self.timePerItNum = 0
 		self.genLossAcc = 0.0
 		self.discLossAcc = 0.0
+		self.positiveBalanceAcc = 0.0
+		self.negativeBalanceAcc = 0.0
 		self.timePerItAcc = 0.0
 		self.printEvery = 60*10
 		self.timeSinceLastLog = time.time()
@@ -54,7 +58,7 @@ class LossTracker():
 	def addSeconds(self, seconds):
 		self.appendSeconds = seconds
 
-	def log(self, genLoss, discLoss, iteration, epochProgress):
+	def log(self, genLoss, discLoss, positiveBalance, negativeBalance, iteration, epochProgress):
 		self.timePerItNum += 1
 		self.timePerItAcc += time.time() - self.timeSinceLastLog
 		self.timeSinceLastLog = time.time()
@@ -64,12 +68,22 @@ class LossTracker():
 		if discLoss:
 			self.discLossNum += 1
 			self.discLossAcc += discLoss
+		if positiveBalance:
+			self.positiveBalanceNum += 1
+			self.positiveBalanceAcc += positiveBalance
+		if negativeBalance:
+			self.negativeBalanceNum += 1
+			self.negativeBalanceAcc += negativeBalance
 		if time.time() - self.printStamp >= self.printEvery:
 			logString = "Iteration {:>7}".format(iteration)
 			if genLoss:
 				logString += ", GenLoss {:>5.3f}".format(self.genLossAcc/self.genLossNum)
 			if discLoss:
 				logString += ", DiscLoss {:>5.3f}".format(self.discLossAcc/self.discLossNum)
+			if positiveBalance:
+				logString += ", positiveBalance {:>5.3f}".format(self.positiveBalanceAcc/self.positiveBalanceNum)
+			if negativeBalance:
+				logString += ", negativeBalance {:>5.3f}".format(self.negativeBalanceAcc/self.negativeBalanceNum)
 			logString += ", {:>6.3f} sec/iteration".format(self.timePerItAcc/self.timePerItNum)
 			logString += ", epoch {:>3.2f}%".format(epochProgress*100)
 			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
@@ -152,16 +166,19 @@ class GANChat():
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
-		trainingMode = MODE.preTrainGenerator
+		trainingMode = MODE.adviserialTraining
 		loadModel = True
 		saveModel = True
 		evaluate = True
+		evaluateDisc = True
 
 		saver = tf.train.Saver()
 
 		lossTracker = LossTracker()
 		genLoss = None
 		discLoss = None
+		positiveBalance = None
+		negativeBalance = None
 		iterationStart = 0
 		currentIteration = 0
 		storedModelTimestamp = time.time()
@@ -188,6 +205,10 @@ class GANChat():
 						fakeSequences = self.generator.generate(sess, postBatch)
 						realSequences = replyBatch
 
+						if evaluateDisc:
+							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
+							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+
 						posts =  np.concatenate([postBatch, postBatch])
 						samples = np.concatenate([fakeSequences, realSequences])
 						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
@@ -211,6 +232,10 @@ class GANChat():
 							fakeSequences = self.generator.generate(sess, postBatch)
 							realSequences = replyBatch
 
+							if evaluateDisc:
+								negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
+								positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+
 							posts =  np.concatenate([postBatch, postBatch])
 							samples = np.concatenate([fakeSequences, realSequences])
 							labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
@@ -219,7 +244,7 @@ class GANChat():
 								summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 							writer.add_summary(summary, iteration)
 
-					lossTracker.log(genLoss, discLoss, iteration, self.data_loader.getEpochProgress())
+					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance,  iteration, self.data_loader.getEpochProgress())
 
 					if time.time() - storedModelTimestamp >= self.storeModelEvery: #Store every self.storeModelEvery second
 						self.saveModel(sess, saver, saveModel, iteration)
@@ -243,9 +268,10 @@ class GANChat():
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
-			result = sess.run(
-				[self.generator.seqences],
-				{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
+			#result = sess.run(
+			#	[self.generator.seqences],
+			#	{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
+			result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
 			print(result)
 
 			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
