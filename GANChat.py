@@ -14,8 +14,9 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 #storeModelId = "ChoLSTMpretrain"
 #loadModelId = "ChoLSTMpretrain"
-storeModelId = "ChoBahdanau"
-loadModelId = "ChoBahdanau"
+storeModelId = "BahdanauGRUpretrain"
+loadModelId = "BahdanauGRUpretrain"
+
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
@@ -148,6 +149,10 @@ class GANChat():
 				file.write("\n")
 		print("Evaluating stored (" + str(iteration)+")")
 
+	def tensorboardWrite(self, writer, summary, iteration, writeToTensorboard):
+		if writeToTensorboard:
+			writer.add_summary(summary, iteration)
+
 	def train(self):
 		tf.reset_default_graph()
 		self.batch_size = 32
@@ -169,8 +174,9 @@ class GANChat():
 		trainingMode = MODE.adviserialTraining
 		loadModel = True
 		saveModel = True
-		evaluate = True
+		evaluate = False
 		evaluateDisc = True
+		writeToTensorboard = False
 
 		saver = tf.train.Saver()
 
@@ -184,7 +190,10 @@ class GANChat():
 		storedModelTimestamp = time.time()
 		with tf.Session() as sess:
 			try:
-				writer = tf.summary.FileWriter(tensorboardDir, sess.graph)
+				if writeToTensorboard:
+					writer = tf.summary.FileWriter(tensorboardDir, sess.graph)
+				else:
+					writer = None
 				if loadModel:
 					iterationStart, startTime = self.loadModel(sess, saver)
 					lossTracker.addSeconds(startTime)
@@ -192,13 +201,20 @@ class GANChat():
 					print("Initialize new graph")
 					sess.run(tf.global_variables_initializer())
 
+				trainingString = "Adviserial Training"
+				if trainingMode == MODE.preTrainGenerator:
+					trainingString = "Pretraining Generator"
+				elif trainingMode == MODE.preTrainDiscriminator:
+					trainingString = "Pretraining Discriminator"
+				print("Starting " + trainingString)
+
 				for iteration in range(iterationStart, 99999999):
 					currentIteration = iteration
 
 					if trainingMode == MODE.preTrainGenerator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
 						summary, genLoss = self.generator.pretrain(sess, postBatch, replyBatch)
-						writer.add_summary(summary, iteration)
+						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					elif trainingMode == MODE.preTrainDiscriminator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
@@ -215,7 +231,7 @@ class GANChat():
 						for _ in range(3):
 							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
 							summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-						writer.add_summary(summary, iteration)
+						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					elif trainingMode == MODE.adviserialTraining:
 						#Generator
@@ -224,7 +240,7 @@ class GANChat():
 							genSequences = self.generator.generate(sess, postBatch)
 							rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
 							summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
-						writer.add_summary(summary, iteration)
+						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 						
 						#Discriminator
 						for _ in range(5):
@@ -242,7 +258,7 @@ class GANChat():
 							for _ in range(3):
 								index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
 								summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-							writer.add_summary(summary, iteration)
+							self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance,  iteration, self.data_loader.getEpochProgress())
 

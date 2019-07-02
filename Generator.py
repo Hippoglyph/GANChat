@@ -45,7 +45,7 @@ class Generator():
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
-		self.encoder_units = 2000
+		self.encoder_units = 2048
 		self.noiseSize = 256
 		self.noiseStd = 1.0
 		self.decoder_units = self.encoder_units + self.noiseSize
@@ -187,7 +187,7 @@ class Generator():
 
 			attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs)
 
-			attention_RNN = seq2seq.AttentionWrapper(decoder_RNN, attention, attention_layer_size=self.decoder_units)
+			attention_RNN = seq2seq.AttentionWrapper(decoder_RNN, attention, attention_layer_size=self.decoder_units//2)
 
 			with tf.variable_scope("noise"):
 				decoderH0 = tf.zeros((self.batch_size, self.encoder_units), dtype=tf.float32)
