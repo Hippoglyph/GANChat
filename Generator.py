@@ -173,8 +173,8 @@ class Generator():
 	def buildBahdanauModel(self):
 		with tf.variable_scope("encoder"):
 
-			encoder_RNN_fw = rnn.GRUCell(self.encoder_units/2)
-			encoder_RNN_bw = rnn.GRUCell(self.encoder_units/2)
+			encoder_RNN_fw = rnn.GRUCell(self.encoder_units//2)
+			encoder_RNN_bw = rnn.GRUCell(self.encoder_units//2)
 
 			(encoder_outputs_fw, encoder_outputs_bw), encoder_final_state = tf.nn.bidirectional_dynamic_rnn(encoder_RNN_fw, encoder_RNN_bw, self.embedded_post, dtype=tf.float32, initial_state_fw=encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32),initial_state_bw=encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32))
 

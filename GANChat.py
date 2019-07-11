@@ -14,11 +14,17 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 #storeModelId = "ChoLSTMpretrain"
 #loadModelId = "ChoLSTMpretrain"
-storeModelId = "BahdanauGRUpretrain"
-loadModelId = "BahdanauGRUpretrain"
+#storeModelId = "BahdanauGRUpretrain"
+#loadModelId = "BahdanauGRUpretrain"
+storeModelId = "BahdanauGRU"
+loadModelId = "BahdanauGRU"
+
+#storeModelId = "BahdanauGRUDisc"
+#loadModelId = "BahdanauGRUDisc"
 
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
+pathToEvaluateDummy = os.path.join(pathToEvaluateDir, "dummy")
 pathToEvaluateDir = os.path.join(pathToEvaluateDir, storeModelId)
 pathToStoreModelDir = os.path.join(pathToModelsDir, storeModelId)
 pathToStoreModel = os.path.join(pathToStoreModelDir, "model.ckpt")
@@ -132,9 +138,9 @@ class GANChat():
 		print("Model loaded "+pathToLoadModel+ " (" + str(iteration)+")")
 		return int(iteration), int(startime)
 
-	def evaluate(self, sess, iteration, batch_size, noise):
-		if not os.path.exists(pathToEvaluateDir):
-			os.makedirs(pathToEvaluateDir)
+	def evaluate(self, sess, iteration, batch_size, noise = True, path = pathToEvaluateDir):
+		if not os.path.exists(path):
+			os.makedirs(path)
 		post, reply = self.data_loader.getTestBatch(batch_size)
 		fakeReply = self.generator.generate(sess, post, noise)
 
@@ -143,7 +149,7 @@ class GANChat():
 		for i in range(batch_size):
 			dataPoints.append({"post": self.tokenProcessor.sequenceToText(post[i]), "reply": self.tokenProcessor.sequenceToText(reply[i]), "fakereply": self.tokenProcessor.sequenceToText(fakeReply[i])})
 
-		with open(os.path.join(pathToEvaluateDir, str(iteration)+".json"), 'w', encoding="utf-8") as file:
+		with open(os.path.join(path, str(iteration)+".json"), 'w', encoding="utf-8") as file:
 			for dataPoint in dataPoints:
 				json.dump(dataPoint, file)
 				file.write("\n")
@@ -152,6 +158,29 @@ class GANChat():
 	def tensorboardWrite(self, writer, summary, iteration, writeToTensorboard):
 		if writeToTensorboard:
 			writer.add_summary(summary, iteration)
+
+	def infer(self):
+		tf.reset_default_graph()
+		self.batch_size = 32
+		self.tokenProcessor = TokenProcessor()
+		self.data_loader = DataLoader(self.batch_size, loadOnlyTest = True)
+		self.sequence_length = self.data_loader.getSequenceLength()
+		self.vocab_size = self.tokenProcessor.getVocabSize()
+		self.start_token = self.tokenProcessor.getStartToken()
+		self.embedding_size = 32
+		self.learning_rate = 0.0001
+		self.token_sample_rate = 8
+
+		self.embedding = Embedding(self.vocab_size, self.embedding_size)
+		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
+
+		saver = tf.train.Saver()
+
+		with tf.Session() as sess:
+			iteration, _ = self.loadModel(sess, saver)
+			self.evaluate(sess, iteration, self.batch_size, noise = True, path = pathToEvaluateDummy)
+
 
 	def train(self):
 		tf.reset_default_graph()
@@ -174,9 +203,10 @@ class GANChat():
 		trainingMode = MODE.adviserialTraining
 		loadModel = True
 		saveModel = True
-		evaluate = False
+		evaluate = True
 		evaluateDisc = True
-		writeToTensorboard = False
+		writeToTensorboard = True
+		freezeDisc = True
 
 		saver = tf.train.Saver()
 
@@ -218,7 +248,7 @@ class GANChat():
 
 					elif trainingMode == MODE.preTrainDiscriminator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
-						fakeSequences = self.generator.generate(sess, postBatch)
+						fakeSequences = self.generator.generate(sess, postBatch, noise = False)
 						realSequences = replyBatch
 
 						if evaluateDisc:
@@ -237,13 +267,13 @@ class GANChat():
 						#Generator
 						for _ in range(1):
 							postBatch, replyBatch = self.data_loader.nextBatch()
-							genSequences = self.generator.generate(sess, postBatch)
+							genSequences = self.generator.generate(sess, postBatch, noise = False)
 							rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
 							summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
 						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 						
 						#Discriminator
-						for _ in range(5):
+						for _ in range(1):
 							postBatch, replyBatch = self.data_loader.nextBatch()
 							fakeSequences = self.generator.generate(sess, postBatch)
 							realSequences = replyBatch
@@ -252,21 +282,24 @@ class GANChat():
 								negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
 								positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
-							posts =  np.concatenate([postBatch, postBatch])
-							samples = np.concatenate([fakeSequences, realSequences])
-							labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-							for _ in range(3):
-								index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
-								summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-							self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+							if not freezeDisc:
 
-					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance,  iteration, self.data_loader.getEpochProgress())
+								posts =  np.concatenate([postBatch, postBatch])
+								samples = np.concatenate([fakeSequences, realSequences])
+								labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
+								for _ in range(3):
+									index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
+									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
+								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+
+					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
 
 					if time.time() - storedModelTimestamp >= self.storeModelEvery: #Store every self.storeModelEvery second
 						self.saveModel(sess, saver, saveModel, iteration)
 						storedModelTimestamp = time.time()
 						if evaluate:
 							self.evaluate(sess, iteration, self.batch_size, noise = trainingMode == MODE.adviserialTraining)
+							#self.evaluate(sess, iteration, self.batch_size, noise = False)
 
 			except (KeyboardInterrupt, SystemExit):
 				self.saveModel(sess, saver, saveModel, currentIteration)
@@ -309,3 +342,4 @@ class GANChat():
 				
 if __name__ == "__main__":
 	GANChat().train()
+	#GANChat().infer()

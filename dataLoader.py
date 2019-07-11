@@ -10,21 +10,32 @@ pathToSeqTrain = os.path.join(pathToSequenceDataset, "train")
 pathToSeqTest = os.path.join(pathToSequenceDataset, "test")
 
 class DataLoader():
-	def __init__(self, batchSize):
+	def __init__(self, batchSize, loadOnlyTest = False):
 		self.epochNumber = -1
 		self.pointer = 0
 		self.trainingDatasetSize = 0
 		self.testDatasetSize = 0
 		self.batchSize = batchSize
-		self.initDatasets()
-		self.newEpoch()
-		self.sequenceLength = len(self.trainingDataset[0]["post"])
+
+		if loadOnlyTest:
+			self.initTestDataset()
+			self.sequenceLength = len(self.testDataset[0]["post"])
+		else:
+			self.initDatasets()
+			self.newEpoch()
+			self.sequenceLength = len(self.trainingDataset[0]["post"])
+
+	def initTestDataset(self):
+		self.testDataset = []
+		self.testDatasetSize = self.loadDataset(pathToSeqTest, "test", self.testDataset)
+
+	def initTrainingDataset(self):
+		self.trainingDataset = []
+		self.trainingDatasetSize = self.loadDataset(pathToSeqTrain, "training", self.trainingDataset)
 
 	def initDatasets(self):
-		self.trainingDataset = []
-		self.testDataset = []
-		self.trainingDatasetSize = self.loadDataset(pathToSeqTrain, "training", self.trainingDataset)
-		self.testDatasetSize = self.loadDataset(pathToSeqTest, "test", self.testDataset)
+		self.initTrainingDataset()
+		self.initTestDataset()
 
 	def loadDataset(self, path, name, dataset):
 		print("Loading "+name+" dataset...")
