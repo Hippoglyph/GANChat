@@ -204,17 +204,19 @@ class GANChat():
 		loadModel = True
 		saveModel = True
 		evaluate = True
-		evaluateDisc = True
 		writeToTensorboard = True
-		freezeDisc = True
+		autoBalance = True
+		trainWithNoise = False
+
+		self.autoBalanceRange = 0.30
 
 		saver = tf.train.Saver()
 
 		lossTracker = LossTracker()
 		genLoss = None
 		discLoss = None
-		positiveBalance = None
-		negativeBalance = None
+		positiveBalance = 0.5
+		negativeBalance = 0.5
 		iterationStart = 0
 		currentIteration = 0
 		storedModelTimestamp = time.time()
@@ -251,9 +253,8 @@ class GANChat():
 						fakeSequences = self.generator.generate(sess, postBatch, noise = False)
 						realSequences = replyBatch
 
-						if evaluateDisc:
-							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+						negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
+						positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
 						posts =  np.concatenate([postBatch, postBatch])
 						samples = np.concatenate([fakeSequences, realSequences])
@@ -266,23 +267,23 @@ class GANChat():
 					elif trainingMode == MODE.adviserialTraining:
 						#Generator
 						for _ in range(1):
-							postBatch, replyBatch = self.data_loader.nextBatch()
-							genSequences = self.generator.generate(sess, postBatch, noise = False)
-							rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
-							summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
-						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+							if not autoBalance or (autoBalance and negativeBalance < 1.0-self.autoBalanceRange):
+								postBatch, replyBatch = self.data_loader.nextBatch()
+								genSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
+								rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
+								summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
+								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 						
 						#Discriminator
 						for _ in range(1):
 							postBatch, replyBatch = self.data_loader.nextBatch()
-							fakeSequences = self.generator.generate(sess, postBatch)
+							fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
 							realSequences = replyBatch
 
-							if evaluateDisc:
-								negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-								positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
+							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
-							if not freezeDisc:
+							if not autoBalance or (autoBalance and negativeBalance > self.autoBalanceRange):
 
 								posts =  np.concatenate([postBatch, postBatch])
 								samples = np.concatenate([fakeSequences, realSequences])
@@ -298,8 +299,8 @@ class GANChat():
 						self.saveModel(sess, saver, saveModel, iteration)
 						storedModelTimestamp = time.time()
 						if evaluate:
-							self.evaluate(sess, iteration, self.batch_size, noise = trainingMode == MODE.adviserialTraining)
-							#self.evaluate(sess, iteration, self.batch_size, noise = False)
+							#self.evaluate(sess, iteration, self.batch_size, noise = trainingMode == MODE.adviserialTraining)
+							self.evaluate(sess, iteration, self.batch_size, noise = trainWithNoise)
 
 			except (KeyboardInterrupt, SystemExit):
 				self.saveModel(sess, saver, saveModel, currentIteration)
