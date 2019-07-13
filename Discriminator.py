@@ -70,7 +70,7 @@ class Discriminator():
 				W2 = tf.Variable(tf.random_normal([self.encoder_units, 2], stddev=std), name="W2")
 				b2 = tf.Variable(tf.random_normal([2], stddev=std), name="b2")
 				with tf.variable_scope("denseLayer1"):
-					denseLayer1 = tf.add(tf.matmul(self.encodedTensor, W1), b1) # batch x encoder_units
+					denseLayer1 = tf.nn.relu(tf.add(tf.matmul(self.encodedTensor, W1), b1)) # batch x encoder_units
 				with tf.variable_scope("dropout"):
 					denseLayer1Dropout = tf.nn.dropout(denseLayer1, keep_prob=self.dropout_keep_prob)
 				with tf.variable_scope("score"):

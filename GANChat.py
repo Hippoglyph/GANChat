@@ -16,11 +16,11 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 #loadModelId = "ChoLSTMpretrain"
 #storeModelId = "BahdanauGRUpretrain"
 #loadModelId = "BahdanauGRUpretrain"
-storeModelId = "BahdanauGRU"
-loadModelId = "BahdanauGRU"
+#storeModelId = "BahdanauGRU"
+#loadModelId = "BahdanauGRU"
 
-#storeModelId = "BahdanauGRUDisc"
-#loadModelId = "BahdanauGRUDisc"
+storeModelId = "BahdanauGRUDisc"
+loadModelId = "BahdanauGRUDisc"
 
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
@@ -58,6 +58,7 @@ class LossTracker():
 		self.printEvery = 60*10
 		self.timeSinceLastLog = time.time()
 		self.appendSeconds = 0
+		self.suggestShutdown = False
 
 	def printEverySecond(self, second):
 		self.printEvery = second
@@ -96,6 +97,9 @@ class LossTracker():
 			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
 			logString += ", Time " + time.strftime("%H:%M:%S", time.localtime(time.time()))
 			print(logString)
+
+			self.suggestShutdown = self.negativeBalanceAcc/self.negativeBalanceNum < 0.4
+
 			self.genLossNum = 0
 			self.discLossNum = 0
 			self.timePerItNum = 0
@@ -103,6 +107,7 @@ class LossTracker():
 			self.discLossAcc = 0.0
 			self.timePerItAcc = 0.0
 			self.printStamp = time.time()
+		return self.suggestShutdown
 
 class GANChat():
 	def __init__(self):
@@ -200,15 +205,16 @@ class GANChat():
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
-		trainingMode = MODE.adviserialTraining
+		trainingMode = MODE.preTrainDiscriminator
 		loadModel = True
 		saveModel = True
-		evaluate = True
+		evaluate = False
 		writeToTensorboard = True
 		autoBalance = True
 		trainWithNoise = False
+		shutdownWhenSuggested = True
 
-		self.autoBalanceRange = 0.30
+		self.autoBalanceRange = 0.4
 
 		saver = tf.train.Saver()
 
@@ -266,13 +272,13 @@ class GANChat():
 
 					elif trainingMode == MODE.adviserialTraining:
 						#Generator
-						for _ in range(1):
-							if not autoBalance or (autoBalance and negativeBalance < 1.0-self.autoBalanceRange):
+						if not autoBalance or negativeBalance < 1.0-self.autoBalanceRange:
+							for _ in range(1):
 								postBatch, replyBatch = self.data_loader.nextBatch()
 								genSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
 								rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
 								summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
-								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+							self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 						
 						#Discriminator
 						for _ in range(1):
@@ -283,7 +289,7 @@ class GANChat():
 							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
 							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
-							if not autoBalance or (autoBalance and negativeBalance > self.autoBalanceRange):
+							if not autoBalance or negativeBalance > self.autoBalanceRange:
 
 								posts =  np.concatenate([postBatch, postBatch])
 								samples = np.concatenate([fakeSequences, realSequences])
@@ -293,13 +299,19 @@ class GANChat():
 									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
-					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
+					suggestShutDown = lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
+
+					if shutdownWhenSuggested and suggestShutDown:
+						self.saveModel(sess, saver, saveModel, iteration)
+						if evaluate:
+							self.evaluate(sess, iteration, self.batch_size, noise = trainWithNoise)
+						print("Imbalanced training - Forced shutdown")
+						sys.exit(0)
 
 					if time.time() - storedModelTimestamp >= self.storeModelEvery: #Store every self.storeModelEvery second
 						self.saveModel(sess, saver, saveModel, iteration)
 						storedModelTimestamp = time.time()
 						if evaluate:
-							#self.evaluate(sess, iteration, self.batch_size, noise = trainingMode == MODE.adviserialTraining)
 							self.evaluate(sess, iteration, self.batch_size, noise = trainWithNoise)
 
 			except (KeyboardInterrupt, SystemExit):
