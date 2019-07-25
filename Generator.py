@@ -128,6 +128,7 @@ class Generator():
 				genProb = tf.nn.softmax(logits)
 				genLogProb = tf.log(tf.clip_by_value(genProb, 1e-8,1-1e-8))
 				self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(sequence, self.vocab_size) * genLogProb, -1) * self.rewards)
+				#self.loss = tf.reduce_mean(tf.reduce_sum(tf.one_hot(sequence, self.vocab_size) * genLogProb, -1) * self.rewards) ?? WTF
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 				self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
 				self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))

@@ -76,7 +76,7 @@ class Discriminator():
 				with tf.variable_scope("score"):
 					self.score = tf.add(tf.matmul(denseLayer1Dropout, W2), b2) # batch x 2
 				with tf.variable_scope("truth_prob"):
-					self.truth_prob = tf.nn.softmax(self.score, 1)[:,1]
+					self.truth_prob = tf.nn.softmax(self.score)[:,1]
 
 			with tf.variable_scope("train"):
 				#self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
