@@ -20,8 +20,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 storeModelId = "BahdanauGRU"
 loadModelId = "BahdanauGRU"
 
-#storeModelId = "BahdanauGRUDisc2"
-#loadModelId = "BahdanauGRUDisc2"
+#storeModelId = "BahdanauGRUDisc3"
+#loadModelId = "BahdanauGRUDisc3"
 
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
@@ -100,7 +100,7 @@ class LossTracker():
 			print(logString)
 
 			if negativeBalance:
-				self.suggestShutdown = self.negativeBalanceAcc/self.negativeBalanceNum < 0.4
+				self.suggestShutdown = self.negativeBalanceAcc/self.negativeBalanceNum < 0.475
 
 			self.genLossNum = 0
 			self.discLossNum = 0
@@ -209,15 +209,15 @@ class GANChat():
 
 		trainingMode = MODE.adviserialTraining
 		loadModel = True
-		saveModel = False
-		evaluate = False
-		writeToTensorboard = False
-		autoBalance = False
+		saveModel = True
+		evaluate = True
+		writeToTensorboard = True
+		autoBalance = True
 		trainWithNoise = False
-		shutdownWhenSuggested = False
-		freezeDisc = True
+		shutdownWhenSuggested = True
+		freezeDisc = False
 
-		self.autoBalanceRange = 0.4
+		self.autoBalanceRange = 0.02
 
 		saver = tf.train.Saver()
 
@@ -275,7 +275,7 @@ class GANChat():
 
 					elif trainingMode == MODE.adviserialTraining:
 						#Generator
-						if not autoBalance or negativeBalance < 1.0-self.autoBalanceRange:
+						if not autoBalance or negativeBalance - positiveBalance < self.autoBalanceRange:
 							for _ in range(1):
 								postBatch, replyBatch = self.data_loader.nextBatch()
 								genSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
@@ -292,7 +292,7 @@ class GANChat():
 							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
 							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
-							if not freezeDisc and (not autoBalance or negativeBalance > self.autoBalanceRange):
+							if not freezeDisc and (not autoBalance or positiveBalance - negativeBalance < self.autoBalanceRange):
 
 								posts =  np.concatenate([postBatch, postBatch])
 								samples = np.concatenate([fakeSequences, realSequences])
@@ -301,8 +301,6 @@ class GANChat():
 									index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
 									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-
-					sys.exit(0)
 
 					suggestShutDown = lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
 
