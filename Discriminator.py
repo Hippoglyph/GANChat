@@ -16,10 +16,10 @@ class Discriminator():
 		self.scope_name = "discriminator"
 		self.buildGraph()
 
-	def train(self, sess, post, reply, labels):
+	def train(self, sess, post, reply, labels, gradient_penalty = 1.0):
 		loss_summary, loss, _ = sess.run(
 				[self.loss_summary, self.loss, self.update_params],
-				{self.post_seq: post,self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: self.dropout})
+				{self.post_seq: post,self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: self.dropout, self.gradient_penalty: gradient_penalty})
 		return loss_summary, loss
 
 	def evaluate(self, sess, post, reply):
@@ -34,6 +34,7 @@ class Discriminator():
 				self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
 				self.targets = tf.placeholder(tf.int32, shape=[self.batch_size], name="targets")
 				self.dropout_keep_prob = tf.placeholder_with_default(1.0, shape=(), name="dropout_keep_prob")
+				self.gradient_penalty = tf.placeholder_with_default(1.0, shape=(), name="gradient_penalty")
 				#self.batch_size = tf.shape(self.post_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
 
@@ -85,6 +86,6 @@ class Discriminator():
 					#print(r.name)
 				self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=self.score))
 				optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-				self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0)
+				self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0*self.gradient_penalty)
 				self.update_params = optimizer.apply_gradients(zip(self.gradients, self.discriminatorVariables))
 				self.loss_summary =  tf.summary.scalar("discriminator_loss", self.loss)

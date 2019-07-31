@@ -100,7 +100,7 @@ class LossTracker():
 			print(logString)
 
 			if negativeBalance:
-				self.suggestShutdown = self.negativeBalanceAcc/self.negativeBalanceNum < 0.475
+				self.suggestShutdown = self.positiveBalanceAcc/self.positiveBalanceNum - self.negativeBalanceAcc/self.negativeBalanceNum > 0.05
 
 			self.genLossNum = 0
 			self.discLossNum = 0
@@ -213,11 +213,11 @@ class GANChat():
 		evaluate = True
 		writeToTensorboard = True
 		autoBalance = True
-		trainWithNoise = False
+		trainWithNoise = True
 		shutdownWhenSuggested = True
 		freezeDisc = False
 
-		self.autoBalanceRange = 0.02
+		self.autoBalanceRange = 0.015
 
 		saver = tf.train.Saver()
 
@@ -292,14 +292,17 @@ class GANChat():
 							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
 							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
 
-							if not freezeDisc and (not autoBalance or positiveBalance - negativeBalance < self.autoBalanceRange):
+							if not freezeDisc:
+
+								gradientPenalty = 1.0 if not autoBalance or positiveBalance - negativeBalance < self.autoBalanceRange else 1.0 - (positiveBalance - negativeBalance - self.autoBalanceRange)/self.autoBalanceRange
+								gradientPenalty = np.clip(gradientPenalty, 1e-20, 1.0)
 
 								posts =  np.concatenate([postBatch, postBatch])
 								samples = np.concatenate([fakeSequences, realSequences])
 								labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
 								for _ in range(3):
 									index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
-									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
+									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index], gradientPenalty)
 								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					suggestShutDown = lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
