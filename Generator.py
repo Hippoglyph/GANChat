@@ -67,11 +67,16 @@ class Generator():
 					{self.post_seq: post, self.noise: noise})
 		return output
 
-	def pretrain(self, sess, post, reply):
-		noise = np.zeros((self.batch_size, self.noiseSize))
-		loss_summary, loss, _ = sess.run(
-				[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
-				{self.post_seq: post,self.reply_seq: reply, self.noise: noise})
+	def pretrain(self, sess, post, reply, noise=True):
+		if(noise):
+			loss_summary, loss, _ = sess.run(
+					[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
+					{self.post_seq: post, self.reply_seq: reply})
+		else:
+			noise = np.zeros((self.batch_size, self.noiseSize))
+			loss_summary, loss, _ = sess.run(
+					[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
+					{self.post_seq: post, self.reply_seq: reply, self.noise: noise})
 		return loss_summary, loss
 
 	def rolloutStep(self, sess, post, reply, keepIndex):

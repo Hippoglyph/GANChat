@@ -15,13 +15,13 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 #storeModelId = "ChoLSTMpretrain"
 #loadModelId = "ChoLSTMpretrain"
-#storeModelId = "BahdanauGRUpretrain"
-#loadModelId = "BahdanauGRUpretrain"
-storeModelId = "BahdanauGRU"
-loadModelId = "BahdanauGRU"
+storeModelId = "BahdanauGRUpretrainN"
+loadModelId = "BahdanauGRUpretrainN"
+#storeModelId = "BahdanauGRU"
+#loadModelId = "BahdanauGRU"
 
-#storeModelId = "BahdanauGRUDisc3"
-#loadModelId = "BahdanauGRUDisc3"
+#storeModelId = "BahdanauGRUDisc"
+#loadModelId = "BahdanauGRUDisc"
 
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
@@ -207,17 +207,17 @@ class GANChat():
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
-		trainingMode = MODE.adviserialTraining
+		trainingMode = MODE.preTrainGenerator
 		loadModel = True
-		saveModel = True
-		evaluate = True
-		writeToTensorboard = True
-		autoBalance = True
+		saveModel = False
+		evaluate = False
+		writeToTensorboard = False
+		autoBalance = False
 		trainWithNoise = True
-		shutdownWhenSuggested = True
+		shutdownWhenSuggested = False
 		freezeDisc = False
 
-		self.autoBalanceRange = 0.015
+		self.autoBalanceRange = 0.02
 
 		saver = tf.train.Saver()
 
@@ -254,12 +254,12 @@ class GANChat():
 
 					if trainingMode == MODE.preTrainGenerator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
-						summary, genLoss = self.generator.pretrain(sess, postBatch, replyBatch)
+						summary, genLoss = self.generator.pretrain(sess, postBatch, replyBatch, noise = trainWithNoise)
 						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					elif trainingMode == MODE.preTrainDiscriminator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
-						fakeSequences = self.generator.generate(sess, postBatch, noise = False)
+						fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
 						realSequences = replyBatch
 
 						negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
@@ -269,7 +269,7 @@ class GANChat():
 						samples = np.concatenate([fakeSequences, realSequences])
 						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
 						for _ in range(3):
-							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
+							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = trainWithNoise)
 							summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
@@ -294,7 +294,7 @@ class GANChat():
 
 							if not freezeDisc:
 
-								gradientPenalty = 1.0 if not autoBalance or positiveBalance - negativeBalance < self.autoBalanceRange else 1.0 - (positiveBalance - negativeBalance - self.autoBalanceRange)/self.autoBalanceRange
+								gradientPenalty = 1.0 if not autoBalance or positiveBalance - negativeBalance < 0 else 1.0 - (positiveBalance - negativeBalance)/self.autoBalanceRange
 								gradientPenalty = np.clip(gradientPenalty, 1e-20, 1.0)
 
 								posts =  np.concatenate([postBatch, postBatch])
