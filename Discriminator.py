@@ -1,5 +1,4 @@
 import tensorflow as tf
-from LSTM import LSTM_recurrent_unit, LSTM_output_unit
 import numpy as np
 from tensorflow.contrib import rnn, seq2seq
 
@@ -10,7 +9,6 @@ class Discriminator():
 		self.embedding = embedding
 		self.encoder_units = 512
 		self.batch_size = batch_size
-		self.params = []
 		self.learning_rate = learning_rate
 		self.dropout = 0.75
 		self.scope_name = "discriminator"
@@ -37,8 +35,6 @@ class Discriminator():
 				self.gradient_penalty = tf.placeholder_with_default(1.0, shape=(), name="gradient_penalty")
 				#self.batch_size = tf.shape(self.post_seq)[0]
 				self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
-
-				self.params.extend(self.embedding.getParams())
 
 				self.embedded_post = self.embedding.getEmbedding(self.post_seq)
 

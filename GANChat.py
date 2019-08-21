@@ -15,13 +15,13 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 #storeModelId = "ChoLSTMpretrain"
 #loadModelId = "ChoLSTMpretrain"
-storeModelId = "BahdanauGRUpretrainN"
-loadModelId = "BahdanauGRUpretrainN"
-#storeModelId = "BahdanauGRU"
-#loadModelId = "BahdanauGRU"
+#storeModelId = "BahdanauGRUpretrainN"
+#loadModelId = "BahdanauGRUpretrainN"
+storeModelId = "BahdanauGRU"
+loadModelId = "BahdanauGRU"
 
-#storeModelId = "BahdanauGRUDisc"
-#loadModelId = "BahdanauGRUDisc"
+#storeModelId = "BahdanauGRUDiscN"
+#loadModelId = "BahdanauGRUDiscN"
 
 pathToModelsDir = os.path.join(os.path.dirname(__file__), "models")
 pathToEvaluateDir = os.path.join(os.path.dirname(__file__), "evaluate")
@@ -100,7 +100,7 @@ class LossTracker():
 			print(logString)
 
 			if negativeBalance:
-				self.suggestShutdown = self.positiveBalanceAcc/self.positiveBalanceNum - self.negativeBalanceAcc/self.negativeBalanceNum > 0.05
+				self.suggestShutdown = self.positiveBalanceAcc/self.positiveBalanceNum - self.negativeBalanceAcc/self.negativeBalanceNum > 0.03
 
 			self.genLossNum = 0
 			self.discLossNum = 0
@@ -207,15 +207,15 @@ class GANChat():
 		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
-		trainingMode = MODE.preTrainGenerator
+		trainingMode = MODE.adviserialTraining
 		loadModel = True
-		saveModel = False
-		evaluate = False
-		writeToTensorboard = False
-		autoBalance = False
+		saveModel = True
+		evaluate = True
+		writeToTensorboard = True
+		autoBalance = True
 		trainWithNoise = True
 		shutdownWhenSuggested = False
-		freezeDisc = False
+		freezeDisc = True
 
 		self.autoBalanceRange = 0.02
 
