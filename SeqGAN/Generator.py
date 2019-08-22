@@ -133,7 +133,7 @@ class Generator():
 					decoder = seq2seq.BasicDecoder(
 						cell=decoder_RNN,
 						helper=DecoderHelper(iteration_number, self.sequence_length, self.embedding, self.embedded_reply, self.embedded_start_token, self.batch_size),
-						initial_state=decoder_RNN.zero_state(),
+						initial_state=decoder_RNN.zero_state(self.batch_size, dtype=tf.float32),
 						output_layer=decoder_RNN_projection
 						)
 

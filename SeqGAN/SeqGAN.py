@@ -1,9 +1,8 @@
 import tensorflow as tf
 from Embedding import Embedding
 from Generator import Generator
+from Target import Target
 from Discriminator import Discriminator
-from TokenProcessor import TokenProcessor
-from DataLoader import DataLoader
 import numpy as np
 import os
 import time
@@ -13,7 +12,7 @@ from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
-tensorboardDir = os.path.join(tensorboardDir, storeModelId)
+tensorboardDir = os.path.join(tensorboardDir, "dummy")
 
 class LossTracker():
 	def __init__(self):
@@ -103,8 +102,10 @@ class GANChat():
 		self.discPreTrainEpoch = 50
 
 		self.embeddingGEN = Embedding(self.vocab_size, self.embedding_size, "GEN")
+		self.embeddingTAR = Embedding(self.vocab_size, self.embedding_size, "TAR")
 		self.embeddingDISC = Embedding(self.vocab_size, self.embedding_size*2, "DISC")
 		self.generator = Generator(self.embeddingGEN, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		self.target = Target(self.embeddingTAR, self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
 		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		writeToTensorboard = True
@@ -129,12 +130,13 @@ class GANChat():
 
 			iteration = 0
 			for epoch in range(self.genPreTrainEpoch):
-				for _ in range(self.epochSize):
-					batch = #TODO
+				for _ in range(self.epochSize//self.batch_size):
+					batch = self.target.generate(sess)
 					summary, genLoss = self.generator.pretrain(sess, batch)
 					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 					iteration+=1
-
+					lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration)
+			'''
 			for epoch in range(self.discPreTrainEpoch):
 				postBatch, replyBatch = self.data_loader.nextBatch()
 				fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
@@ -176,8 +178,7 @@ class GANChat():
 						index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
 						summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-
-			lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration)
+			'''
 				
 if __name__ == "__main__":
 	GANChat().train()
