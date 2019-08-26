@@ -21,3 +21,6 @@ class Embedding():
 
 	def getNameScope(self):
 		return self.name_scope
+
+	def getEmbeddingSize(self):
+		return self.embedding_size
