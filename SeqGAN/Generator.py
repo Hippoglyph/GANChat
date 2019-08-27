@@ -123,7 +123,7 @@ class Generator():
 
 		with tf.variable_scope("decoder"):
 
-			decoder_RNN = rnn.LSTMCell(self.units)
+			decoder_RNN = rnn.LSTMCell(self.units, initializer=tf.initializers.random_normal(0,0.1))
 			decoder_RNN_projection = tf.layers.Dense(units=self.vocab_size, use_bias=True, kernel_initializer=tf.initializers.random_normal(0,0.1))
 
 			with tf.variable_scope("generate"):
