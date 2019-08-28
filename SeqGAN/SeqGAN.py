@@ -48,7 +48,11 @@ class GANChat():
 
 		self.totalUpdatesPerEpoch = self.epochSize//self.batch_size
 
-		log = open('save/experiment-log.txt', 'w')
+		logfile = "save/experiment-log.txt"
+		dirname = os.path.dirname(logfile)
+		if not os.path.exists(dirname):
+			os.makedirs(dirname)
+		log = open(logfile, 'w')
 
 		with tf.Session() as sess:
 			if writeToTensorboard:
