@@ -269,7 +269,7 @@ class GANChat():
 						samples = np.concatenate([fakeSequences, realSequences])
 						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
 						for _ in range(3):
-							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = trainWithNoise)
+							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
 							summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
 						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 

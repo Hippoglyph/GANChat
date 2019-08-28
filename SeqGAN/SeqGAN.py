@@ -48,6 +48,8 @@ class GANChat():
 
 		self.totalUpdatesPerEpoch = self.epochSize//self.batch_size
 
+		log = open('save/experiment-log.txt', 'w')
+
 		with tf.Session() as sess:
 			if writeToTensorboard:
 				writer = tf.summary.FileWriter(tensorboardDir, sess.graph)
@@ -57,9 +59,8 @@ class GANChat():
 			print("Initialize new graph")
 			sess.run(tf.global_variables_initializer())
 
-
-
 			iteration = 0
+			print("PreTrain Generator")
 			for epoch in range(self.genPreTrainEpoch):
 				for _ in range(self.totalUpdatesPerEpoch):
 					batch = self.target.generate(sess)
@@ -70,49 +71,59 @@ class GANChat():
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
 					print("PreTrain epoch {:>4}, score {:>5.3f}".format(epoch, score))
-			'''
+					log.write(str(epoch) + " " + str(score) + '\n')
+			
+			iteration = 0
+			print("PreTrain Discriminator")
 			for epoch in range(self.discPreTrainEpoch):
-				postBatch, replyBatch = self.data_loader.nextBatch()
-				fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-				realSequences = replyBatch
+				for _ in range(self.totalUpdatesPerEpoch):
+					realSequences = self.target.generate(sess)
+					fakeSequences = self.generator.generate(sess)
 
-				negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-				positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
-
-				posts =  np.concatenate([postBatch, postBatch])
-				samples = np.concatenate([fakeSequences, realSequences])
-				labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-				for _ in range(3):
-					index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = trainWithNoise)
-					summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-				self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-
-			for epoch in range(self.epochNumber):
-				#Generator
-				for _ in range(1):
-					postBatch, replyBatch = self.data_loader.nextBatch()
-					genSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-					rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
-					summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
-				self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-				
-				#Discriminator
-				for _ in range(5):
-					postBatch, replyBatch = self.data_loader.nextBatch()
-					fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-					realSequences = replyBatch
-
-					negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-					positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
-
-					posts =  np.concatenate([postBatch, postBatch])
 					samples = np.concatenate([fakeSequences, realSequences])
 					labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
 					for _ in range(3):
-						index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
-						summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
+						index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
+						summary, discLoss = self.discriminator.train(sess, samples[index], labels[index])
 					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-			'''
+					iteration+=1
+
+				if epoch % 5 == 0:
+					print("PreTrain epoch {:>4}, score {:>5.3f}".format(epoch, discLoss))
+
+			disc_iteration = 0
+			iteration = 0
+			print("Adverserial training")
+			for epoch in range(self.genPreTrainEpoch, self.genPreTrainEpoch + self.epochNumber):
+				for _ in range(self.totalUpdatesPerEpoch):
+					#Generator
+					for _ in range(1):
+						genSequences = self.generator.generate(sess)
+						rewards = self.generator.calculateReward(sess, genSequences, self.token_sample_rate, self.discriminator)
+						summary, genLoss = self.generator.train(sess, genSequences, rewards)
+					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+					iteration+=1
+					
+					#Discriminator
+					for _ in range(3):
+						realSequences = self.target.generate(sess)
+						fakeSequences = self.generator.generate(sess)
+
+						samples = np.concatenate([fakeSequences, realSequences])
+						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
+						for _ in range(3):
+							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
+							summary, discLoss = self.discriminator.train(sess, samples[index], labels[index])
+						self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
+						disc_iteration+=1
+
+				if epoch % 5 == 0:
+					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
+					print("Ad Train epoch {:>4}, score {:>5.3f}".format(epoch, score))
+					log.write(str(epoch) + " " + str(score) + '\n')
+
+			log.close()
+			
 
 	def play(self):
 		tf.reset_default_graph()
