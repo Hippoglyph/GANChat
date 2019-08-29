@@ -51,7 +51,7 @@ def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'
     return output
 
 class Discriminator():
-	def __init__(self, embedding, sequence_length, start_token, learning_rate, batch_size):
+	def __init__(self, embedding, sequence_length, start_token, batch_size):
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
@@ -59,8 +59,9 @@ class Discriminator():
 		self.filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 		self.num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
 		self.batch_size = batch_size
-		self.learning_rate = learning_rate
+		self.learning_rate = 1e-4
 		self.dropout = 0.75
+		self.l2_lambda = 0.2
 		self.scope_name = "discriminator"
 		self.buildGraph()
 
@@ -86,6 +87,7 @@ class Discriminator():
 
 			self.embedded_reply = self.embedding.getEmbedding(self.reply_seq)
 			self.embedded_reply_expanded = tf.expand_dims(self.embedded_reply, -1)
+			self.l2_loss = tf.constant(0.0)
 
 	def buildTrainingGraph(self, score):
 		with tf.variable_scope("train"):
@@ -93,7 +95,8 @@ class Discriminator():
 			#self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name)
 			#for r in self.discriminatorVariables:
 				#print(r.name)
-			self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=score))
+			entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=score)
+			self.loss = tf.reduce_mean(entropy) + self.l2_lambda * self.l2_loss
 			optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 			self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0)
 			self.update_params = optimizer.apply_gradients(zip(self.gradients, self.discriminatorVariables))
@@ -150,6 +153,8 @@ class Discriminator():
 			std = 0.1
 			W1 = tf.Variable(tf.random_normal([total_features, 2], stddev=std), name="W1")
 			b1 = tf.Variable(tf.random_normal([2], stddev=std), name="b1")
+			self.l2_loss += tf.nn.l2_loss(W1)
+			self.l2_loss += tf.nn.l2_loss(b1)
 			with tf.variable_scope("score"):
 				score = tf.add(tf.matmul(dropout, W1), b1)
 			with tf.variable_scope("truth_prob"):

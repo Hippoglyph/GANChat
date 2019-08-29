@@ -29,7 +29,6 @@ class GANChat():
 		self.vocab_size = 5000
 		self.start_token = 0
 		self.embedding_size = 32
-		self.learning_rate = 0.01
 		self.token_sample_rate = 16
 
 		self.epochSize = 10000
@@ -40,9 +39,9 @@ class GANChat():
 		self.embeddingGEN = Embedding(self.vocab_size, self.embedding_size, "GEN")
 		self.embeddingTAR = Embedding(self.vocab_size, self.embedding_size, "TAR")
 		self.embeddingDISC = Embedding(self.vocab_size, self.embedding_size*2, "DISC")
-		self.generator = Generator(self.embeddingGEN, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		self.generator = Generator(self.embeddingGEN, self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
 		self.target = Target(self.embeddingTAR, self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
-		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
+		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.batch_size)
 
 		writeToTensorboard = True
 
@@ -95,7 +94,7 @@ class GANChat():
 				if epoch % 5 == 0:
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 
-			disc_iteration += 1000
+			#disc_iteration += 1000
 			iteration = 0
 			print("Adverserial training")
 			for epoch in range(self.genPreTrainEpoch, self.genPreTrainEpoch + self.epochNumber):
@@ -109,7 +108,7 @@ class GANChat():
 					iteration+=1
 					
 					#Discriminator
-					for _ in range(3):
+					for _ in range(5):
 						realSequences = self.target.generate(sess)
 						fakeSequences = self.generator.generate(sess)
 

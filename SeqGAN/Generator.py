@@ -41,14 +41,14 @@ class DecoderHelper(Helper):
 		return finished, next_token, state
 
 class Generator():
-	def __init__(self, embedding, sequence_length, start_token, vocab_size, learning_rate, batch_size):
+	def __init__(self, embedding, sequence_length, start_token, vocab_size, batch_size):
 		self.sequence_length = sequence_length
 		self.start_token = start_token
 		self.embedding = embedding
 		self.units = 32
 		self.vocab_size = vocab_size
 		self.batch_size = batch_size
-		self.learning_rate = learning_rate
+		self.learning_rate = 1e-2
 		self.scope_name = "generator"
 		self.buildGraph()
 
