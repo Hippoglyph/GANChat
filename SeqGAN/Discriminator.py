@@ -151,7 +151,7 @@ class Discriminator():
 			W1 = tf.Variable(tf.random_normal([total_features, 2], stddev=std), name="W1")
 			b1 = tf.Variable(tf.random_normal([2], stddev=std), name="b1")
 			with tf.variable_scope("score"):
-				score = tf.nn.relu(tf.add(tf.matmul(dropout, W1), b1))
+				score = tf.add(tf.matmul(dropout, W1), b1)
 			with tf.variable_scope("truth_prob"):
 				truth_prob = tf.nn.softmax(score)[:,1]
 

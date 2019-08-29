@@ -74,7 +74,7 @@ class GANChat():
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
-					print("PreTrain epoch {:>4}, score {:>5.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
+					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 			
 			disc_iteration = 0
@@ -93,7 +93,7 @@ class GANChat():
 					disc_iteration+=1
 
 				if epoch % 5 == 0:
-					print("PreTrain epoch {:>4}, score {:>5.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
+					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 
 			disc_iteration += 1000
 			iteration = 0
@@ -123,7 +123,7 @@ class GANChat():
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
-					print("Ad Train epoch {:>4}, score {:>5.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
+					print("Ad Train epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 
 			log.close()
