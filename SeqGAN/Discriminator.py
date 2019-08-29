@@ -131,15 +131,15 @@ class Discriminator():
 			std = 0.1
 			features = []
 			for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
-				with tf.variable_scope("cov-"+filter_size):
+				with tf.variable_scope("cov-"+str(filter_size)):
 					filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
 					W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
 					b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
 					conv = tf.nn.conv2d(self.embedded_reply_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
 					h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
-					pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool")
+					pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool", strides=[1,1,1,1])
 					features.append(pool)
-			total_features = sum(num_filters)
+			total_features = sum(self.num_filters)
 			combined_features = tf.concat(features, 3)
 			combined_features_flat = tf.reshape(combined_features, [-1, total_features])
 
@@ -162,7 +162,8 @@ class Discriminator():
 			
 			self.buildInputGraph()
 
-			score, self.truth_prob = self.buildRNNModel()
+			#score, self.truth_prob = self.buildRNNModel()
+			score, self.truth_prob = self.buildCNNModel()
 
 			self.buildTrainingGraph(score)
 

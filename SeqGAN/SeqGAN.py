@@ -12,7 +12,7 @@ from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
-tensorboardDir = os.path.join(tensorboardDir, "dummy")
+tensorboardDir = os.path.join(tensorboardDir, "CNN")
 
 class GANChat():
 	def __init__(self):
@@ -48,7 +48,7 @@ class GANChat():
 
 		self.totalUpdatesPerEpoch = self.epochSize//self.batch_size
 
-		logfile = "save/experiment-log.txt"
+		logfile = "save/experiment-log-CNN.txt"
 		dirname = os.path.dirname(logfile)
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
@@ -74,10 +74,10 @@ class GANChat():
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
-					print("PreTrain epoch {:>4}, score {:>5.3f}".format(epoch, score))
+					print("PreTrain epoch {:>4}, score {:>5.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 			
-			iteration = 0
+			disc_iteration = 0
 			print("PreTrain Discriminator")
 			for epoch in range(self.discPreTrainEpoch):
 				for _ in range(self.totalUpdatesPerEpoch):
@@ -89,13 +89,13 @@ class GANChat():
 					for _ in range(3):
 						index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
 						summary, discLoss = self.discriminator.train(sess, samples[index], labels[index])
-					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-					iteration+=1
+					self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
+					disc_iteration+=1
 
 				if epoch % 5 == 0:
-					print("PreTrain epoch {:>4}, score {:>5.3f}".format(epoch, discLoss))
+					print("PreTrain epoch {:>4}, score {:>5.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 
-			disc_iteration = 0
+			disc_iteration += 1000
 			iteration = 0
 			print("Adverserial training")
 			for epoch in range(self.genPreTrainEpoch, self.genPreTrainEpoch + self.epochNumber):
@@ -123,7 +123,7 @@ class GANChat():
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
-					print("Ad Train epoch {:>4}, score {:>5.3f}".format(epoch, score))
+					print("Ad Train epoch {:>4}, score {:>5.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 
 			log.close()
