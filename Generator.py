@@ -90,7 +90,7 @@ class Generator():
 			for _ in range(tokenSampleRate):
 				sampleReply = self.rolloutStep(sess, post, reply, keepNumber)
 				rewards[:,keepNumber-1] += discriminator.evaluate(sess, post, sampleReply)
-			rewards[:,-1] = discriminator.evaluate(sess, post, reply) * tokenSampleRate
+		rewards[:,-1] = discriminator.evaluate(sess, post, reply) * tokenSampleRate
 		return rewards / tokenSampleRate
 
 	def train(self, sess, post, reply, rewards):
