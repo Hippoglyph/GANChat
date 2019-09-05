@@ -130,23 +130,32 @@ class GANChat():
 
 	def play(self):
 		tf.reset_default_graph()
-		vocab_size = 5
+		vocab_size = 500
 		embedding_size = 32
 		sequence_length = 4
 		batch_size = 2
 		embeddingTAR = Embedding(vocab_size, embedding_size, "TAR")
 		embeddingGEN = Embedding(vocab_size, embedding_size, "GEN")
 		target = Target(embeddingTAR, sequence_length, 0, vocab_size, batch_size)
-		generator = Generator(embeddingGEN, sequence_length, 0, vocab_size, 0.1, batch_size)
+		generator = Generator(embeddingGEN, sequence_length, 0, vocab_size, batch_size)
 
 		dummy = [[1, 2, 3, 4],
 				[3, 2, 3, 1]]
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
-			score = target.calculateScore(sess, generator, 100)
+			#score = target.calculateScore(sess, generator, 100)
+			output = generator.rolloutStep(sess, dummy, 0)
+			print(output)
+			output = generator.rolloutStep(sess, dummy, 1)
+			print(output)
+			output = generator.rolloutStep(sess, dummy, 2)
+			print(output)
+			output = generator.rolloutStep(sess, dummy, 3)
+			print(output)
+			output = generator.rolloutStep(sess, dummy, 4)
 
-			print(score)
+			print(output)
 				
 if __name__ == "__main__":
 	GANChat().train()
