@@ -80,7 +80,8 @@ class Generator():
 		#RL-Learning
 		genProb = tf.nn.softmax(logits)
 		genLogProb = tf.log(tf.clip_by_value(genProb, 1e-20, 1.0))
-		self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)
+		self.loss = -tf.reduce_sum(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)
+		#self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)
 		optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
 		self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
 		self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))
