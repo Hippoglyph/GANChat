@@ -3,6 +3,8 @@ from Embedding import Embedding
 from Generator import Generator
 from Target import Target
 from Discriminator import Discriminator
+from Dataloader import GenDataLoader
+from Dataloader import DiscDataLoader
 import numpy as np
 import os
 import time
@@ -45,8 +47,12 @@ class GANChat():
 		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.batch_size)
 
 		writeToTensorboard = True
-
 		self.totalUpdatesPerEpoch = self.epochSize//self.batch_size
+		
+
+		self.genDataLoader = GenDataLoader(self.batch_size)
+		self.discDataLoader = DiscDataLoader(self.batch_size, self.genDataLoader)
+
 
 		logfile = "save/experiment-log-CNN.txt"
 		dirname = os.path.dirname(logfile)
@@ -63,11 +69,14 @@ class GANChat():
 			print("Initialize new graph")
 			sess.run(tf.global_variables_initializer())
 
+			print("Creating dataset")
+			self.genDataLoader.createDataset(self.target, self.epochSize, sess)
+
 			iteration = 0
 			print("PreTrain Generator")
 			for epoch in range(self.genPreTrainEpoch):
-				for _ in range(self.totalUpdatesPerEpoch):
-					batch = self.target.generate(sess)
+				for _ in range(self.genDataLoader.num_batches):
+					batch = self.genDataLoader.nextBatch()
 					summary, genLoss = self.generator.pretrain(sess, batch)
 					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 					iteration+=1
@@ -80,17 +89,13 @@ class GANChat():
 			disc_iteration = 0
 			print("PreTrain Discriminator")
 			for epoch in range(self.discPreTrainEpoch):
-				for _ in range(self.totalUpdatesPerEpoch):
-					realSequences = self.target.generate(sess)
-					fakeSequences = self.generator.generate(sess)
-
-					samples = np.concatenate([fakeSequences, realSequences])
-					labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-					for _ in range(3):
-						index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
-						summary, discLoss = self.discriminator.train(sess, samples[index], labels[index])
-					self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
-					disc_iteration+=1
+				self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
+				for _ in range(3):
+					for _ in range(self.discDataLoader.num_batches):
+						batch, labels = self.discDataLoader.nextBatch()
+						summary, discLoss = self.discriminator.train(sess, batch, labels)
+						self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
+						disc_iteration+=1
 
 				if epoch % 5 == 0:
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
@@ -105,22 +110,18 @@ class GANChat():
 					genSequences = self.generator.generate(sess)
 					rewards = self.generator.calculateReward(sess, genSequences, self.token_sample_rate, self.discriminator)
 					summary, genLoss = self.generator.train(sess, genSequences, rewards)
-				self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-				iteration+=1
+					self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+					iteration+=1
 				
 				#Discriminator
 				for _ in range(5):
-					for _ in range(self.totalUpdatesPerEpoch):
-						realSequences = self.target.generate(sess)
-						fakeSequences = self.generator.generate(sess)
-
-						samples = np.concatenate([fakeSequences, realSequences])
-						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-						for _ in range(3):
-							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
-							summary, discLoss = self.discriminator.train(sess, samples[index], labels[index])
-						self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
-						disc_iteration+=1
+					self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
+					for _ in range(3):
+						for _ in range(self.discDataLoader.num_batches):
+							batch, labels = self.discDataLoader.nextBatch()
+							summary, discLoss = self.discriminator.train(sess, batch, labels)
+							self.tensorboardWrite(writer, summary, disc_iteration, writeToTensorboard)
+							disc_iteration+=1
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
