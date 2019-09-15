@@ -27,7 +27,7 @@ class Target():
 
 	def calculateScore(self, sess, generator, total_iteration):
 		nll = []
-		for _ in range(total_iteration):
+		for _ in range(total_iteration//self.batch_size):
 			sequence = generator.generate(sess)
 			nll.append(self.getProbability(sess, sequence))
 		return np.mean(nll)

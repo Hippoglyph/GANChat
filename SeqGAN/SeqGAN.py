@@ -10,11 +10,15 @@ import os
 import time
 import sys
 import json
+import random
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
-tensorboardDir = os.path.join(tensorboardDir, "CNN")
+tensorboardDir = os.path.join(tensorboardDir, "CNN-mean")
+#logfile = "save/experiment-log-CNN.txt"
+logfile = "save/experiment-log-CNN-mean.txt"
+SEED = 1337
 
 
 class GANChat():
@@ -27,6 +31,9 @@ class GANChat():
 
 	def train(self):
 		tf.reset_default_graph()
+		random.seed(SEED)
+		np.random.seed(SEED)
+		tf.random.set_random_seed(SEED)
 		self.batch_size = 64
 		self.sequence_length = 20
 		self.vocab_size = 5000
@@ -47,14 +54,10 @@ class GANChat():
 		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.batch_size)
 
 		writeToTensorboard = True
-		self.totalUpdatesPerEpoch = self.epochSize//self.batch_size
-		
 
 		self.genDataLoader = GenDataLoader(self.batch_size)
 		self.discDataLoader = DiscDataLoader(self.batch_size, self.genDataLoader)
 
-
-		logfile = "save/experiment-log-CNN.txt"
 		dirname = os.path.dirname(logfile)
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
@@ -82,7 +85,7 @@ class GANChat():
 					iteration+=1
 
 				if epoch % 5 == 0:
-					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
+					score = self.target.calculateScore(sess, self.generator, self.epochSize)
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 			
@@ -124,7 +127,7 @@ class GANChat():
 							disc_iteration+=1
 
 				if epoch % 5 == 0:
-					score = self.target.calculateScore(sess, self.generator, self.totalUpdatesPerEpoch)
+					score = self.target.calculateScore(sess, self.generator, self.epochSize)
 					print("Ad Train epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 
