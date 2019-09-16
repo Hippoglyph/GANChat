@@ -1,5 +1,20 @@
 import numpy as np
 
+class TargetDataLoader():
+	def __init__ (self):
+		self.data = []
+		self.num_batches = 0
+		self.pointer = 0
+
+	def appendBatch(self, batch):
+		self.data.append(batch)
+		self.num_batches += 1
+
+	def nextBatch(self):
+		batch = self.data[self.pointer]
+		self.pointer = (self.pointer + 1) % self.num_batches
+		return batch
+
 class GenDataLoader():
 	def __init__ (self, batch_size):
 		self.batch_size = batch_size

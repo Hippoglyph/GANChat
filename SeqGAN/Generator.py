@@ -13,6 +13,8 @@ class Generator():
 		self.batch_size = batch_size
 		self.learning_rate_MLE = 1e-2
 		self.learning_rate = 1e-2
+		self.grad_clip = 5.0
+		self.loss_size = 1000.0
 		self.scope_name = "generator"
 		self.buildGraph()
 
@@ -74,7 +76,7 @@ class Generator():
 		#Pretrain
 		self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.in_seq, logits=logits))
 		pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_MLE)
-		self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), 5.0)
+		self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), self.grad_clip)
 		self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.generatorVariables))
 		self.pretrain_summary = tf.summary.scalar("generator_pretrain_loss", self.pretrain_loss)
 
@@ -82,10 +84,10 @@ class Generator():
 		genProb = tf.nn.softmax(logits)
 		genLogProb = tf.log(tf.clip_by_value(genProb, 1e-20, 1.0))
 		#self.loss = -tf.reduce_sum(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)
-		#self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)
-		self.loss = -tf.reduce_mean(tf.reduce_sum(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards, -1))
+		self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards)*self.loss_size
+		#self.loss = -tf.reduce_mean(tf.reduce_sum(tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * genLogProb, -1) * self.rewards, -1))
 		optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-		self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
+		self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), self.grad_clip)
 		self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))
 		self.train_summary = tf.summary.scalar("generator_loss", self.loss)
 
@@ -148,6 +150,4 @@ class Generator():
 			self.sequence, self.sequence_logits = self.buildModel()
 
 			self.buildTrainingGraph(self.sequence_logits)
-
-			self.dummy = self.embedding.getParams()
 			

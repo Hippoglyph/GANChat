@@ -11,6 +11,7 @@ class Target():
 		self.units = 32
 		self.vocab_size = vocab_size
 		self.batch_size = batch_size
+		self.learning_rate_MLE = 1e-2
 		self.scope_name = "target"
 		self.buildGraph()
 
@@ -32,6 +33,12 @@ class Target():
 			nll.append(self.getProbability(sess, sequence))
 		return np.mean(nll)
 
+	def train(self, sess, seq):
+		loss_summary, loss, _ = sess.run(
+				[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
+				{self.in_seq: seq})
+		return loss_summary, loss
+
 	def buildInputGraph(self):
 		self.in_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="in_sequence")
 		self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
@@ -40,6 +47,19 @@ class Target():
 
 		self.ta_emb_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
 		self.ta_emb_seq = self.ta_emb_seq.unstack(tf.transpose(self.embedded_seq, perm=[1, 0, 2])) #seq_length x batch x embedding
+
+	def buildTrainingGraph(self, logits):
+		self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
+		#for r in self.generatorVariables:
+			#print(r.name)
+			#print(r.shape)
+
+		#Pretrain
+		self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.in_seq, logits=logits))
+		pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_MLE)
+		self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), 5.0)
+		self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.generatorVariables))
+		self.pretrain_summary = tf.summary.scalar("target_loss", self.pretrain_loss)
 
 	def buildModel(self):
 
@@ -80,14 +100,16 @@ class Target():
 		sequence = tf.transpose(sequence.stack(), perm=[1, 0])  # batch_size x seq_length
 		sequence_logits = tf.transpose(sequence_logits.stack(), perm=[1, 0, 2])  # batch_size x seq_length x vocab_size
 
-		probs = tf.nn.softmax(sequence_logits)
-
-		return sequence, probs
+		return sequence, sequence_logits
 
 	def buildGraph(self):
 		with tf.variable_scope(self.scope_name):
 			self.buildInputGraph()
 
-			self.sequence, self.probs = self.buildModel()
+			self.sequence, self.sequence_logits = self.buildModel()
+
+			self.buildTrainingGraph(self.sequence_logits)
+
+			self.probs = tf.nn.softmax(self.sequence_logits)
 
 			self.score = -tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * tf.log(self.probs))/(self.sequence_length * self.batch_size)
