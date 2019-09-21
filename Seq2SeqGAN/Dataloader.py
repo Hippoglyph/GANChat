@@ -16,8 +16,10 @@ class TargetDataLoader():
 		return batch
 
 class GenDataLoader():
-	def __init__ (self, batch_size):
+	def __init__ (self, batch_size, vocab_size, sequence_length):
 		self.batch_size = batch_size
+		self.vocab_size = vocab_size
+		self.sequence_length = sequence_length
 		self.data = []
 		self.num_batches = 0
 		self.pointer = 0
@@ -27,18 +29,24 @@ class GenDataLoader():
 		self.num_batches = datapoints//self.batch_size
 
 		for _ in range(self.num_batches):
-			self.data.append(model.generate(sess))
+			post = np.random.randint(self.vocab_size, size=(self.batch_size, self.sequence_length))
+			self.data.append([post, model.generate(sess, post)])
 
 		self.pointer = 0
 
 	def nextBatch(self):
-		batch = self.data[self.pointer]
+		post, reply = self.data[self.pointer]
 		self.pointer = (self.pointer + 1) % self.num_batches
-		return batch
+		return post, reply
+
+	def getRandomBatch(self):
+		return self.data[np.random.randint(self.vocab_size)]
 
 class DiscDataLoader():
-	def __init__(self, batch_size, trueDataLoader):
+	def __init__(self, batch_size, vocab_size, sequence_length, trueDataLoader):
 		self.batch_size = batch_size
+		self.vocab_size = vocab_size
+		self.sequence_length = sequence_length
 		self.data = []
 		self.num_batches = 0
 		self.pointer = 0
@@ -49,14 +57,11 @@ class DiscDataLoader():
 		positiveData = []
 		negativeData = []
 
-		for batch in self.trueDataLoader.data:
-			for item in batch:
-				positiveData.append(item)
-
-		for _ in range(datapoints//self.batch_size):
-			batch = model.generate(sess)
-			for item in batch:
-				negativeData.append(item)
+		for post, reply in self.trueDataLoader.data:
+			fakereply = model.generate(sess, post)
+			for i in range(self.batch_size):
+				positiveData.append([post[i], reply[i]])
+				negativeData.append([post[i], fakereply[i]])
 
 		self.data = np.array(positiveData + negativeData)
 		self.labels = np.array([1 for _ in positiveData] + [0 for _ in negativeData])
@@ -75,9 +80,9 @@ class DiscDataLoader():
 		self.pointer = 0
 
 	def nextBatch(self):
-		batch = self.data[self.pointer]
+		post, reply = np.transpose(self.data[self.pointer], (1,0,2))
 		label = self.labels[self.pointer]
 		self.pointer = (self.pointer + 1) % self.num_batches
-		return batch, label
+		return post, reply, label
 
 

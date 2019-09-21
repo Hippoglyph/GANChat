@@ -20,7 +20,7 @@ class Generator():
 
 	def generate(self, sess, post):
 		output = sess.run(
-				self.sequence
+				self.sequence,
 				{self.post_seq: post})
 		return output
 
@@ -39,9 +39,9 @@ class Generator():
 		rewards = np.zeros((self.batch_size, self.sequence_length))
 		for keepNumber in range(1,self.sequence_length):
 			for _ in range(tokenSampleRate):
-				sampleseq = self.rolloutStep(sess, post, reply, keepNumber)
-				rewards[:,keepNumber-1] += discriminator.evaluate(sess, sampleseq) ##
-		rewards[:,-1] = discriminator.evaluate(sess, seq) * tokenSampleRate ##
+				sample_reply = self.rolloutStep(sess, post, reply, keepNumber)
+				rewards[:,keepNumber-1] += discriminator.evaluate(sess, post, sample_reply)
+		rewards[:,-1] = discriminator.evaluate(sess, post, reply) * tokenSampleRate
 		return rewards / tokenSampleRate
 
 	def train(self, sess, post, reply, rewards):

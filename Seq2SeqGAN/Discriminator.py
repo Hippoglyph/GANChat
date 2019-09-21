@@ -65,100 +65,89 @@ class Discriminator():
 		self.scope_name = "discriminator"
 		self.buildGraph()
 
-	def train(self, sess, reply, labels):
+	def train(self, sess, post, reply, labels):
 		loss_summary, loss, _ = sess.run(
 				[self.loss_summary, self.loss, self.update_params],
-				{self.reply_seq: reply,self.targets: labels, self.dropout_keep_prob: self.dropout})
+				{self.post_seq: post, self.reply_seq: reply, self.targets: labels, self.dropout_keep_prob: self.dropout})
 		return loss_summary, loss
 
-	def evaluate(self, sess, reply):
+	def evaluate(self, sess, post, reply):
 		return sess.run(
 			self.truth_prob,
-			{self.reply_seq: reply})
+			{self.post_seq: post, self.reply_seq: reply})
 
 	def buildInputGraph(self):
-		with tf.variable_scope("inputs"):
-			self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
-			self.targets = tf.placeholder(tf.int32, shape=[self.batch_size], name="targets")
-			self.dropout_keep_prob = tf.placeholder_with_default(1.0, shape=(), name="dropout_keep_prob")
-			#self.batch_size = tf.shape(self.post_seq)[0]
-			#self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
+		self.post_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="post_sequence")
+		self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
+		self.targets = tf.placeholder(tf.int32, shape=[self.batch_size], name="targets")
+		self.dropout_keep_prob = tf.placeholder_with_default(1.0, shape=(), name="dropout_keep_prob")
+		#self.batch_size = tf.shape(self.post_seq)[0]
+		#self.start_token = tf.cast(tf.ones([self.batch_size])*self.start_token,dtype=tf.int32)
 
-
-			self.embedded_reply = self.embedding.getEmbedding(self.reply_seq)
-			self.embedded_reply_expanded = tf.expand_dims(self.embedded_reply, -1)
-			self.l2_loss = tf.constant(0.0)
+		self.embedded_reply = self.embedding.getEmbedding(self.reply_seq)
+		self.embedded_reply_expanded = tf.expand_dims(self.embedded_reply, -1)
+		self.embedded_post = self.embedding.getEmbedding(self.post_seq)
+		self.embedded_post_expanded = tf.expand_dims(self.embedded_post, -1)
+		self.l2_loss = tf.constant(0.0)
 
 	def buildTrainingGraph(self, score):
-		with tf.variable_scope("train"):
-			self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
-			#self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name)
-			#for r in self.discriminatorVariables:
-				#print(r.name)
-			entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=score)
-			self.loss = tf.reduce_mean(entropy) + self.l2_lambda * self.l2_loss
-			optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-			self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0)
-			self.update_params = optimizer.apply_gradients(zip(self.gradients, self.discriminatorVariables))
-			self.loss_summary =  tf.summary.scalar("discriminator_loss", self.loss)
-
-
-	def buildRNNModel(self):
-		with tf.variable_scope("encoder"):
-
-			reply_encoder_RNN = rnn.LSTMCell(self.encoder_units)
-
-			_, reply_encoder_final_hidden_memory_tuple = tf.nn.dynamic_rnn(reply_encoder_RNN, self.embedded_reply, dtype=tf.float32, initial_state=reply_encoder_RNN.zero_state(self.batch_size, dtype=tf.float32))
-
-			encodedTensor = reply_encoder_final_hidden_memory_tuple[1]
-
-		with tf.variable_scope("output"):
-			std = 0.1
-			W1 = tf.Variable(tf.random_normal([self.encoder_units, self.encoder_units//2], stddev=std), name="W1")
-			b1 = tf.Variable(tf.random_normal([self.encoder_units//2], stddev=std), name="b1")
-			W2 = tf.Variable(tf.random_normal([self.encoder_units//2, 2], stddev=std), name="W2")
-			b2 = tf.Variable(tf.random_normal([2], stddev=std), name="b2")
-			with tf.variable_scope("denseLayer1"):
-				denseLayer1 = tf.nn.relu(tf.add(tf.matmul(encodedTensor, W1), b1)) # batch x encoder_units//2
-			with tf.variable_scope("dropout"):
-				denseLayer1Dropout = tf.nn.dropout(denseLayer1, keep_prob=self.dropout_keep_prob)
-			with tf.variable_scope("score"):
-				score = tf.add(tf.matmul(denseLayer1Dropout, W2), b2) # batch x 2
-			with tf.variable_scope("truth_prob"):
-				truth_prob = tf.nn.softmax(score)[:,1]
-
-		return score, truth_prob
+		self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
+		#self.discriminatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name)
+		#for r in self.discriminatorVariables:
+			#print(r.name)
+		entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.targets, logits=score)
+		self.loss = tf.reduce_mean(entropy) + self.l2_lambda * self.l2_loss
+		optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+		self.gradients, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.discriminatorVariables), 5.0)
+		self.update_params = optimizer.apply_gradients(zip(self.gradients, self.discriminatorVariables))
+		self.loss_summary =  tf.summary.scalar("discriminator_loss", self.loss)
 
 	def buildCNNModel(self):
-		with tf.variable_scope("encoder"):
-			std = 0.1
-			features = []
-			for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
-				with tf.variable_scope("cov-"+str(filter_size)):
-					filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
-					W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
-					b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
-					conv = tf.nn.conv2d(self.embedded_reply_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
-					h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
-					pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool", strides=[1,1,1,1])
-					features.append(pool)
-			total_features = sum(self.num_filters)
-			combined_features = tf.concat(features, 3)
-			combined_features_flat = tf.reshape(combined_features, [-1, total_features])
+		std = 0.1
 
-			features_highway = highway(combined_features_flat, combined_features_flat.get_shape()[1], 1, 0)
-			dropout = tf.nn.dropout(features_highway, keep_prob=self.dropout_keep_prob)
+		#post
+		features_post = []
+		for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
+			with tf.variable_scope("cov-"+str(filter_size)):
+				filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
+				W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
+				b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
+				conv = tf.nn.conv2d(self.embedded_reply_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
+				h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+				pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool", strides=[1,1,1,1])
+				features_post.append(pool)
+		total_features_post = sum(self.num_filters)
+		combined_features_post = tf.concat(features_post, 3)
+		combined_features_post_flat = tf.reshape(combined_features_post, [-1, total_features_post])
 
-		with tf.variable_scope("output"):
-			std = 0.1
-			W1 = tf.Variable(tf.random_normal([total_features, 2], stddev=std), name="W1")
-			b1 = tf.Variable(tf.random_normal([2], stddev=std), name="b1")
-			self.l2_loss += tf.nn.l2_loss(W1)
-			self.l2_loss += tf.nn.l2_loss(b1)
-			with tf.variable_scope("score"):
-				score = tf.add(tf.matmul(dropout, W1), b1)
-			with tf.variable_scope("truth_prob"):
-				truth_prob = tf.nn.softmax(score)[:,1]
+		#reply
+		features_reply = []
+		for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
+			with tf.variable_scope("cov-"+str(filter_size)):
+				filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
+				W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
+				b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
+				conv = tf.nn.conv2d(self.embedded_reply_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
+				h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+				pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool", strides=[1,1,1,1])
+				features_reply.append(pool)
+		total_features_reply = sum(self.num_filters)
+		combined_features_reply = tf.concat(features_reply, 3)
+		combined_features_reply_flat = tf.reshape(combined_features_reply, [-1, total_features_reply])
+
+		features = tf.concat([combined_features_post_flat, combined_features_reply_flat], 1)
+
+		features_highway = highway(features, features.get_shape()[1], 1, 0)
+		dropout = tf.nn.dropout(features_highway, keep_prob=self.dropout_keep_prob)
+
+		W1 = tf.Variable(tf.random_normal([total_features_reply + total_features_post, 2], stddev=std), name="W1")
+		b1 = tf.Variable(tf.random_normal([2], stddev=std), name="b1")
+		self.l2_loss += tf.nn.l2_loss(W1)
+		self.l2_loss += tf.nn.l2_loss(b1)
+		with tf.variable_scope("score"):
+			score = tf.add(tf.matmul(dropout, W1), b1)
+		with tf.variable_scope("truth_prob"):
+			truth_prob = tf.nn.softmax(score)[:,1]
 
 		return score, truth_prob
 
@@ -166,8 +155,7 @@ class Discriminator():
 		with tf.variable_scope(self.scope_name):
 			
 			self.buildInputGraph()
-
-			#score, self.truth_prob = self.buildRNNModel()
+			
 			score, self.truth_prob = self.buildCNNModel()
 
 			self.buildTrainingGraph(score)

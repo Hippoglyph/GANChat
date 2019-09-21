@@ -15,7 +15,7 @@ import random
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-experimentName = "More Data"
+experimentName = "standard"
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, experimentName)
 #logfile = "save/experiment-log-CNN.txt"
@@ -43,7 +43,7 @@ class GANChat():
 		self.embedding_size = 32
 		self.token_sample_rate = 16
 
-		self.epochSize = 50000 #10000
+		self.epochSize = 10000 #10000
 		self.genPreTrainEpoch = 120 #120
 		self.targetTrainingEpoch = 120
 		self.epochNumber = 200
@@ -58,8 +58,8 @@ class GANChat():
 
 		self.writeToTensorboard = True
 		trainTarget = False
-		self.genDataLoader = GenDataLoader(self.batch_size)
-		self.discDataLoader = DiscDataLoader(self.batch_size, self.genDataLoader)
+		self.genDataLoader = GenDataLoader(self.batch_size, self.vocab_size, self.sequence_length)
+		self.discDataLoader = DiscDataLoader(self.batch_size, self.vocab_size, self.sequence_length, self.genDataLoader)
 
 		dirname = os.path.dirname(logfile)
 		if not os.path.exists(dirname):
@@ -85,8 +85,8 @@ class GANChat():
 			print("PreTrain Generator")
 			for epoch in range(self.genPreTrainEpoch):
 				for _ in range(self.genDataLoader.num_batches):
-					batch = self.genDataLoader.nextBatch()
-					summary, genLoss = self.generator.pretrain(sess, batch)
+					post, reply = self.genDataLoader.nextBatch()
+					summary, genLoss = self.generator.pretrain(sess, post, reply)
 					self.tensorboardWrite(writer, summary, iteration, self.writeToTensorboard)
 					iteration+=1
 
@@ -101,8 +101,8 @@ class GANChat():
 				self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
 				for _ in range(3):
 					for _ in range(self.discDataLoader.num_batches):
-						batch, labels = self.discDataLoader.nextBatch()
-						summary, discLoss = self.discriminator.train(sess, batch, labels)
+						post, reply, labels = self.discDataLoader.nextBatch()
+						summary, discLoss = self.discriminator.train(sess, post, reply, labels)
 						self.tensorboardWrite(writer, summary, disc_iteration, self.writeToTensorboard)
 						disc_iteration+=1
 
@@ -116,9 +116,10 @@ class GANChat():
 				
 				#Generator
 				for _ in range(1):
-					genSequences = self.generator.generate(sess)
-					rewards = self.generator.calculateReward(sess, genSequences, self.token_sample_rate, self.discriminator)
-					summary, genLoss = self.generator.train(sess, genSequences, rewards)
+					post, reply = self.genDataLoader.getRandomBatch()
+					fakeReply = self.generator.generate(sess, post)
+					rewards = self.generator.calculateReward(sess, post, fakeReply, self.token_sample_rate, self.discriminator)
+					summary, genLoss = self.generator.train(sess, post, fakeReply, rewards)
 					self.tensorboardWrite(writer, summary, iteration, self.writeToTensorboard)
 					iteration+=1
 				
@@ -127,8 +128,8 @@ class GANChat():
 					self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
 					for _ in range(3):
 						for _ in range(self.discDataLoader.num_batches):
-							batch, labels = self.discDataLoader.nextBatch()
-							summary, discLoss = self.discriminator.train(sess, batch, labels)
+							post, reply, labels = self.discDataLoader.nextBatch()
+							summary, discLoss = self.discriminator.train(sess, post, reply, labels)
 							self.tensorboardWrite(writer, summary, disc_iteration, self.writeToTensorboard)
 							disc_iteration+=1
 

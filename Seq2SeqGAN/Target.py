@@ -17,7 +17,7 @@ class Target():
 
 	def generate(self, sess, post):
 		output = sess.run(
-				self.sequence
+				self.sequence,
 				{self.post_seq: post})
 		return output
 
@@ -27,11 +27,12 @@ class Target():
 				{self.post_seq: post, self.reply_seq: reply})
 		return output
 
-	def calculateScore(self, sess, generator, total_iteration): ##
+	def calculateScore(self, sess, generator, total_iteration):
 		nll = []
 		for _ in range(total_iteration//self.batch_size):
-			sequence = generator.generate(sess)
-			nll.append(self.getProbability(sess, sequence))
+			post = np.random.randint(self.vocab_size, size=(self.batch_size, self.sequence_length))
+			sequence = generator.generate(sess, post)
+			nll.append(self.getProbability(sess, post, sequence))
 		return np.mean(nll)
 
 	def train(self, sess, post, reply, rewards):
@@ -95,7 +96,7 @@ class Target():
 			outputs, next_cell_state = self.decoderCell(inputs, cell_state)
 			logits = tf.add(tf.matmul(outputs, self.W), self.b)
 			sequence_logits = sequence_logits.write(time, logits)
-			next_inputs = self.ta_emb_seq.read(time)
+			next_inputs = self.ta_emb_reply_seq.read(time)
 			return time + 1, next_inputs, next_cell_state, sequence_logits
 
 		_, _, encoder_cell_state = control_flow_ops.while_loop(
@@ -128,4 +129,4 @@ class Target():
 
 			self.probs = tf.nn.softmax(self.sequence_logits)
 
-			self.score = -tf.reduce_sum(tf.one_hot(self.in_seq, self.vocab_size) * tf.log(self.probs))/(self.sequence_length * self.batch_size)
+			self.score = -tf.reduce_sum(tf.one_hot(self.reply_seq, self.vocab_size) * tf.log(self.probs))/(self.sequence_length * self.batch_size)
