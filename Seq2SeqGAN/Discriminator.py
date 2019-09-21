@@ -112,7 +112,7 @@ class Discriminator():
 				filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
 				W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
 				b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
-				conv = tf.nn.conv2d(self.embedded_reply_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
+				conv = tf.nn.conv2d(self.embedded_post_expanded, W, strides=[1,1,1,1], padding="VALID", name="conv")
 				h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
 				pool = tf.nn.max_pool(h, ksize=[1, self.sequence_length - filter_size + 1, 1, 1], padding="VALID", name="pool", strides=[1,1,1,1])
 				features_post.append(pool)
@@ -155,7 +155,7 @@ class Discriminator():
 		with tf.variable_scope(self.scope_name):
 			
 			self.buildInputGraph()
-			
+
 			score, self.truth_prob = self.buildCNNModel()
 
 			self.buildTrainingGraph(score)

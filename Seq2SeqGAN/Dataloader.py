@@ -40,7 +40,7 @@ class GenDataLoader():
 		return post, reply
 
 	def getRandomBatch(self):
-		return self.data[np.random.randint(self.vocab_size)]
+		return self.data[np.random.randint(self.num_batches)]
 
 class DiscDataLoader():
 	def __init__(self, batch_size, vocab_size, sequence_length, trueDataLoader):
