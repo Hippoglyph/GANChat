@@ -35,10 +35,10 @@ class Target():
 			nll.append(self.getProbability(sess, post, sequence))
 		return np.mean(nll)
 
-	def train(self, sess, post, reply, rewards):
+	def train(self, sess, post, reply):
 		loss_summary, loss, _ = sess.run(
-				[self.train_summary, self.loss, self.update],
-				{self.post_seq: post, self.reply_seq: reply, self.rewards: rewards})
+				[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
+				{self.post_seq: post, self.reply_seq: reply})
 		return loss_summary, loss
 
 	def buildInputGraph(self):
@@ -58,8 +58,8 @@ class Target():
 	def buildTrainingGraph(self, logits):
 		self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
 		#for r in self.generatorVariables:
-			#print(r.name)
-			#print(r.shape)
+		#	print(r.name)
+		#	print(r.shape)
 
 		#Pretrain
 		self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=logits))

@@ -12,10 +12,11 @@ import time
 import sys
 import json
 import random
+import math
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-experimentName = "standard"
+experimentName = "skewed-target"
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, experimentName)
 #logfile = "save/experiment-log-CNN.txt"
@@ -57,7 +58,7 @@ class GANChat():
 		self.discriminator = Discriminator(self.embeddingDISC, self.sequence_length, self.start_token, self.batch_size)
 
 		self.writeToTensorboard = True
-		trainTarget = False
+		trainTarget = True
 		self.genDataLoader = GenDataLoader(self.batch_size, self.vocab_size, self.sequence_length)
 		self.discDataLoader = DiscDataLoader(self.batch_size, self.vocab_size, self.sequence_length, self.genDataLoader)
 
@@ -141,33 +142,31 @@ class GANChat():
 			log.close()
 
 	def trainTarget(self, sess, writer):
-
-		tokenMap = {}
 		targetDataLoader = TargetDataLoader()
 
 		print("Creating Target training data")
 		for _ in range(self.epochSize//self.batch_size):
-			sequence = np.zeros((self.batch_size, self.sequence_length), dtype=int)
+			post = np.random.randint(self.vocab_size, size=(self.batch_size, self.sequence_length))
+			reply = np.zeros((self.batch_size, self.sequence_length), dtype=int)
 			for t in range(self.sequence_length):
 				for b in range(self.batch_size):
-					if t == 0:
-						sequence[b][t] = random.randint(0,self.vocab_size-1)
+					if t < 4:
+						reply[b][t] = random.randint(0,self.vocab_size-1)
 					else:
-						if sequence[b][t-1] not in tokenMap:
-							tokenMap[sequence[b][t-1]] = random.choices(range(self.vocab_size), k=3)
+						tokens = random.choices(np.append(post[b][0:t], reply[b][t-4:t-1]), k=3)
 						tokenId = random.choices(range(4), cum_weights=[0.3,0.6,0.9,1.0],k=1)[0]
 						if tokenId == 3:
-							sequence[b][t] = random.randint(0,self.vocab_size-1)
+							reply[b][t] = random.randint(0,self.vocab_size-1)
 						else:
-							sequence[b][t] = tokenMap[sequence[b][t-1]][tokenId]
-			targetDataLoader.appendBatch(sequence)
+							reply[b][t] = tokens[tokenId]
+			targetDataLoader.appendBatch(post, reply)
 
 		iteration = 0
 		print("Training target")
 		for epoch in range(self.targetTrainingEpoch):
 			for _ in range(targetDataLoader.num_batches):
-				batch = targetDataLoader.nextBatch()
-				summary, loss = self.target.train(sess, batch)
+				post, reply = targetDataLoader.nextBatch()
+				summary, loss = self.target.train(sess, post, reply)
 				self.tensorboardWrite(writer, summary, iteration, self.writeToTensorboard)
 				iteration+=1
 

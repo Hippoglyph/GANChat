@@ -6,8 +6,8 @@ class TargetDataLoader():
 		self.num_batches = 0
 		self.pointer = 0
 
-	def appendBatch(self, batch):
-		self.data.append(batch)
+	def appendBatch(self, post, reply):
+		self.data.append([post, reply])
 		self.num_batches += 1
 
 	def nextBatch(self):

@@ -1,54 +1,85 @@
 import tensorflow as tf
 import numpy as np
 from tensorflow.contrib import rnn, seq2seq
+import math
 
 # An alternative to tf.nn.rnn_cell._linear function, which has been removed in Tensorfow 1.0.1
 # The highway layer is borrowed from https://github.com/mkroutikov/tf-lstm-char-cnn
 def linear(input_, output_size, scope=None):
-    '''
-    Linear map: output[k] = sum_i(Matrix[k, i] * input_[i] ) + Bias[k]
-    Args:
-    input_: a tensor or a list of 2D, batch x n, Tensors.
-    output_size: int, second dimension of W[i].
-    scope: VariableScope for the created subgraph; defaults to "Linear".
+	'''
+	Linear map: output[k] = sum_i(Matrix[k, i] * input_[i] ) + Bias[k]
+	Args:
+	input_: a tensor or a list of 2D, batch x n, Tensors.
+	output_size: int, second dimension of W[i].
+	scope: VariableScope for the created subgraph; defaults to "Linear".
   Returns:
-    A 2D Tensor with shape [batch x output_size] equal to
-    sum_i(input_[i] * W[i]), where W[i]s are newly created matrices.
+	A 2D Tensor with shape [batch x output_size] equal to
+	sum_i(input_[i] * W[i]), where W[i]s are newly created matrices.
   Raises:
-    ValueError: if some of the arguments has unspecified or wrong shape.
+	ValueError: if some of the arguments has unspecified or wrong shape.
   '''
 
-    shape = input_.get_shape().as_list()
-    if len(shape) != 2:
-        raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
-    if not shape[1]:
-        raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
-    input_size = shape[1]
+	shape = input_.get_shape().as_list()
+	if len(shape) != 2:
+		raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
+	if not shape[1]:
+		raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
+	input_size = shape[1]
 
-    # Now the computation.
-    with tf.variable_scope(scope or "SimpleLinear"):
-        matrix = tf.get_variable("Matrix", [output_size, input_size], dtype=input_.dtype)
-        bias_term = tf.get_variable("Bias", [output_size], dtype=input_.dtype)
+	# Now the computation.
+	with tf.variable_scope(scope or "SimpleLinear"):
+		matrix = tf.get_variable("Matrix", [output_size, input_size], dtype=input_.dtype)
+		bias_term = tf.get_variable("Bias", [output_size], dtype=input_.dtype)
 
-    return tf.matmul(input_, tf.transpose(matrix)) + bias_term
+	return tf.matmul(input_, tf.transpose(matrix)) + bias_term
 
 def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'):
-    """Highway Network (cf. http://arxiv.org/abs/1505.00387).
-    t = sigmoid(Wy + b)
-    z = t * g(Wy + b) + (1 - t) * y
-    where g is nonlinearity, t is transform gate, and (1 - t) is carry gate.
-    """
+	"""Highway Network (cf. http://arxiv.org/abs/1505.00387).
+	t = sigmoid(Wy + b)
+	z = t * g(Wy + b) + (1 - t) * y
+	where g is nonlinearity, t is transform gate, and (1 - t) is carry gate.
+	"""
 
-    with tf.variable_scope(scope):
-        for idx in range(num_layers):
-            g = f(linear(input_, size, scope='highway_lin_%d' % idx))
+	with tf.variable_scope(scope):
+		for idx in range(num_layers):
+			g = f(linear(input_, size, scope='highway_lin_%d' % idx))
 
-            t = tf.sigmoid(linear(input_, size, scope='highway_gate_%d' % idx) + bias)
+			t = tf.sigmoid(linear(input_, size, scope='highway_gate_%d' % idx) + bias)
 
-            output = t * g + (1. - t) * input_
-            input_ = output
+			output = t * g + (1. - t) * input_
+			input_ = output
 
-    return output
+	return output
+
+def context_gating(input_layer):
+		"""Context Gating (https://arxiv.org/pdf/1706.06905.pdf)
+		Args:
+		input_layer: Input layer in the following shape:
+		'batch_size' x 'number_of_activation'
+		Returns:
+		activation: gated layer in the following shape:
+		'batch_size' x 'number_of_activation'
+		"""
+
+		input_dim = input_layer.get_shape().as_list()[1] 
+		
+		gating_weights = tf.get_variable("gating_weights",
+		  [input_dim, input_dim],
+		  initializer = tf.random_normal_initializer(
+		  stddev = 1.0 / math.sqrt(input_dim)))
+		
+		gates = tf.matmul(input_layer, gating_weights)
+ 
+		gating_biases = tf.get_variable("gating_biases",
+		[input_dim],
+		initializer = tf.random_normal_initializer(stddev = 1.0 / math.sqrt(input_dim)))
+		gates += gating_biases
+
+		gates = tf.sigmoid(gates)
+
+		activation = tf.multiply(input_layer,gates)
+
+		return activation
 
 class Discriminator():
 	def __init__(self, embedding, sequence_length, start_token, batch_size):
@@ -108,7 +139,7 @@ class Discriminator():
 		#post
 		features_post = []
 		for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
-			with tf.variable_scope("cov-"+str(filter_size)):
+			with tf.variable_scope("cov-"+str(filter_size)+"-post"):
 				filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
 				W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
 				b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
@@ -123,7 +154,7 @@ class Discriminator():
 		#reply
 		features_reply = []
 		for filter_size, num_filter in zip(self.filter_sizes, self.num_filters):
-			with tf.variable_scope("cov-"+str(filter_size)):
+			with tf.variable_scope("cov-"+str(filter_size)+"-reply"):
 				filter_shape = [filter_size, self.embedding.getEmbeddingSize(), 1, num_filter]
 				W = tf.Variable(tf.random_normal(filter_shape, stddev=std), name="W")
 				b = tf.Variable(tf.random_normal([num_filter], stddev=std), name="b")
@@ -137,7 +168,8 @@ class Discriminator():
 
 		features = tf.concat([combined_features_post_flat, combined_features_reply_flat], 1)
 
-		features_highway = highway(features, features.get_shape()[1], 1, 0)
+		cg = context_gating(features)
+		features_highway = highway(cg, cg.get_shape()[1], 1, 0)
 		dropout = tf.nn.dropout(features_highway, keep_prob=self.dropout_keep_prob)
 
 		W1 = tf.Variable(tf.random_normal([total_features_reply + total_features_post, 2], stddev=std), name="W1")
