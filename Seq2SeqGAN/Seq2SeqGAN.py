@@ -6,6 +6,7 @@ from Discriminator import Discriminator
 from Dataloader import GenDataLoader
 from Dataloader import DiscDataLoader
 from Dataloader import TargetDataLoader
+from Dataloader import RealDataLoader
 import numpy as np
 import os
 import time
@@ -16,7 +17,7 @@ import math
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-experimentName = "skewed-target"
+experimentName = "real-data-target-and-pretrain-200-more-data"
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, experimentName)
 #logfile = "save/experiment-log-CNN.txt"
@@ -38,17 +39,17 @@ class GANChat():
 		np.random.seed(SEED)
 		tf.random.set_random_seed(SEED)
 		self.batch_size = 64
-		self.sequence_length = 20
-		self.vocab_size = 5000
+		self.sequence_length = 64 # 20
+		self.vocab_size = 30003 # 5000
 		self.start_token = 0
 		self.embedding_size = 32
 		self.token_sample_rate = 16
 
-		self.epochSize = 10000 #10000
-		self.genPreTrainEpoch = 120 #120
-		self.targetTrainingEpoch = 120
+		self.epochSize = 50000 #10000
+		self.genPreTrainEpoch = 200 #120
+		self.targetTrainingEpoch = 200 #120
 		self.epochNumber = 200
-		self.discPreTrainEpoch = 50 #50
+		self.discPreTrainEpoch = 60 #50
 
 		self.embeddingGEN = Embedding(self.vocab_size, self.embedding_size, "GEN")
 		self.embeddingTAR = Embedding(self.vocab_size, self.embedding_size, "TAR")
@@ -59,6 +60,7 @@ class GANChat():
 
 		self.writeToTensorboard = True
 		trainTarget = True
+		trainTargetFakeData = False
 		self.genDataLoader = GenDataLoader(self.batch_size, self.vocab_size, self.sequence_length)
 		self.discDataLoader = DiscDataLoader(self.batch_size, self.vocab_size, self.sequence_length, self.genDataLoader)
 
@@ -76,11 +78,15 @@ class GANChat():
 			print("Initialize new graph")
 			sess.run(tf.global_variables_initializer())
 
+			self.targetDataLoader = None
 			if trainTarget:
-				self.trainTarget(sess, writer)
+				if trainTargetFakeData:
+					self.targetDataLoader = self.trainTargetFakeData(sess, writer)
+				else:
+					self.targetDataLoader = self.trainTarget(sess, writer)
 
 			print("Creating dataset")
-			self.genDataLoader.createDataset(self.target, self.epochSize, sess)
+			self.genDataLoader.createDataset(self.target, self.epochSize, sess, self.targetDataLoader)
 
 			iteration = 0
 			print("PreTrain Generator")
@@ -92,7 +98,7 @@ class GANChat():
 					iteration+=1
 
 				if epoch % 5 == 0:
-					score = self.target.calculateScore(sess, self.generator, self.epochSize)
+					score = self.target.calculateScore(sess, self.generator, self.epochSize, self.targetDataLoader)
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 			
@@ -135,13 +141,31 @@ class GANChat():
 							disc_iteration+=1
 
 				if epoch % 5 == 0:
-					score = self.target.calculateScore(sess, self.generator, self.epochSize)
+					score = self.target.calculateScore(sess, self.generator, self.epochSize, self.targetDataLoader)
 					print("Ad Train epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 
 			log.close()
 
 	def trainTarget(self, sess, writer):
+		targetDataLoader = RealDataLoader(self.batch_size, self.epochSize)
+		assert self.sequence_length == targetDataLoader.getSequenceLength()
+
+		iteration = 0
+		print("Training target")
+		for epoch in range(self.targetTrainingEpoch):
+			for _ in range(targetDataLoader.num_batches):
+				post, reply = targetDataLoader.nextBatch()
+				summary, loss = self.target.train(sess, post, reply)
+				self.tensorboardWrite(writer, summary, iteration, self.writeToTensorboard)
+				iteration+=1
+
+			if epoch % 5 == 0:
+				print("Target   epoch {:>4}, score {:>6.3f} - ".format(epoch, loss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
+
+		return targetDataLoader
+					
+	def trainTargetFakeData(self, sess, writer):
 		targetDataLoader = TargetDataLoader()
 
 		print("Creating Target training data")
@@ -172,9 +196,8 @@ class GANChat():
 
 			if epoch % 5 == 0:
 				print("Target   epoch {:>4}, score {:>6.3f} - ".format(epoch, loss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
-					
 
-
+		return targetDataLoader
 
 				
 if __name__ == "__main__":

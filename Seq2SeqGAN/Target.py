@@ -27,10 +27,13 @@ class Target():
 				{self.post_seq: post, self.reply_seq: reply})
 		return output
 
-	def calculateScore(self, sess, generator, total_iteration):
+	def calculateScore(self, sess, generator, total_iteration, targetDataLoader):
 		nll = []
 		for _ in range(total_iteration//self.batch_size):
-			post = np.random.randint(self.vocab_size, size=(self.batch_size, self.sequence_length))
+			if targetDataLoader:
+				post, _ = targetDataLoader.nextBatch()
+			else:
+				post = np.random.randint(self.vocab_size, size=(self.batch_size, self.sequence_length))
 			sequence = generator.generate(sess, post)
 			nll.append(self.getProbability(sess, post, sequence))
 		return np.mean(nll)
