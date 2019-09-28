@@ -131,5 +131,5 @@ class Target():
 			self.buildTrainingGraph(self.sequence_logits)
 
 			self.probs = tf.nn.softmax(self.sequence_logits)
-
-			self.score = -tf.reduce_sum(tf.one_hot(self.reply_seq, self.vocab_size) * tf.log(self.probs))/(self.sequence_length * self.batch_size)
+			logProb = tf.log(tf.clip_by_value(self.probs, 1e-20, 1.0))
+			self.score = -tf.reduce_sum(tf.one_hot(self.reply_seq, self.vocab_size) * logProb)/(self.sequence_length * self.batch_size)
