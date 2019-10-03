@@ -17,13 +17,47 @@ import math
 from tensorflow.python.client import device_lib
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-experimentName = "real-data-target-and-pretrain-200-more-data"
+experimentName = "real-data-target-and-pretrain-200-more-data-converge"
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, experimentName)
 #logfile = "save/experiment-log-CNN.txt"
 logfile = "save/"+experimentName+".txt"
 SEED = 1337
 
+class ConvergenceTracker():
+	def __init__(self, slack):
+		self.slack = slack
+		self.reset()
+
+	def reset(self):
+		self.record = float("inf")
+		self.timeSinceRecord = 0
+		self.epochs = 0
+		self.newEpoch()
+
+	def newEpoch(self):
+		self.loss = 0.0
+		self.n = 0.0
+
+	def report(self, loss):
+		self.loss += loss
+		self.n += 1.0
+
+	def hasConverged(self):
+		if self.n < 1.0:
+			return False
+		candidate = self.loss / self.n
+		if candidate < self.record:
+			self.record = candidate
+			self.timeSinceRecord = 0
+		self.timeSinceRecord += 1
+		self.epochs += 1
+		if self.timeSinceRecord >= self.slack:
+			print(self.epochs)
+			self.reset()
+			return True
+		self.newEpoch()
+		return False
 
 class GANChat():
 	def __init__(self):
@@ -63,6 +97,7 @@ class GANChat():
 		trainTargetFakeData = False
 		self.genDataLoader = GenDataLoader(self.batch_size, self.vocab_size, self.sequence_length)
 		self.discDataLoader = DiscDataLoader(self.batch_size, self.vocab_size, self.sequence_length, self.genDataLoader)
+		self.conTrack = ConvergenceTracker(3)
 
 		dirname = os.path.dirname(logfile)
 		if not os.path.exists(dirname):
@@ -102,6 +137,7 @@ class GANChat():
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, score) + time.strftime("%H:%M:%S", time.localtime(time.time())))
 					log.write(str(epoch) + " " + str(score) + '\n')
 			
+			'''
 			disc_iteration = 0
 			print("PreTrain Discriminator")
 			for epoch in range(self.discPreTrainEpoch):
@@ -115,11 +151,25 @@ class GANChat():
 
 				if epoch % 5 == 0:
 					print("PreTrain epoch {:>4}, score {:>6.3f} - ".format(epoch, discLoss) + time.strftime("%H:%M:%S", time.localtime(time.time())))
+			'''
 
-			disc_iteration += 1000
+			#disc_iteration += 1000
+			disc_iteration = 0
 			iteration = 0
 			print("Adverserial training")
 			for epoch in range(self.genPreTrainEpoch, self.genPreTrainEpoch + self.epochNumber):
+
+				#Discriminator
+				while not self.conTrack.hasConverged():
+					self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
+					for _ in range(3):
+						for _ in range(self.discDataLoader.num_batches):
+							post, reply, labels = self.discDataLoader.nextBatch()
+							summary, discLoss = self.discriminator.train(sess, post, reply, labels)
+							self.tensorboardWrite(writer, summary, disc_iteration, self.writeToTensorboard)
+							disc_iteration+=1
+							self.conTrack.report(discLoss)
+				print(disc_iteration)
 				
 				#Generator
 				for _ in range(1):
@@ -130,6 +180,7 @@ class GANChat():
 					self.tensorboardWrite(writer, summary, iteration, self.writeToTensorboard)
 					iteration+=1
 				
+				'''
 				#Discriminator
 				for _ in range(5):
 					self.discDataLoader.createDataset(self.generator, self.epochSize, sess)
@@ -139,6 +190,7 @@ class GANChat():
 							summary, discLoss = self.discriminator.train(sess, post, reply, labels)
 							self.tensorboardWrite(writer, summary, disc_iteration, self.writeToTensorboard)
 							disc_iteration+=1
+				'''
 
 				if epoch % 5 == 0:
 					score = self.target.calculateScore(sess, self.generator, self.epochSize, self.targetDataLoader)
