@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.contrib import rnn, seq2seq
 import math
+import tensorflow.contrib.slim as slim
 
 # An alternative to tf.nn.rnn_cell._linear function, which has been removed in Tensorfow 1.0.1
 # The highway layer is borrowed from https://github.com/mkroutikov/tf-lstm-char-cnn
@@ -33,13 +34,13 @@ def linear(input_, output_size, scope=None):
 
 	return tf.matmul(input_, tf.transpose(matrix)) + bias_term
 
-def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'):
+def highway(input_, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'):
 	"""Highway Network (cf. http://arxiv.org/abs/1505.00387).
 	t = sigmoid(Wy + b)
 	z = t * g(Wy + b) + (1 - t) * y
 	where g is nonlinearity, t is transform gate, and (1 - t) is carry gate.
 	"""
-
+	size = input_.get_shape()[1]
 	with tf.variable_scope(scope):
 		for idx in range(num_layers):
 			g = f(linear(input_, size, scope='highway_lin_%d' % idx))
@@ -51,7 +52,7 @@ def highway(input_, size, num_layers=1, bias=-2.0, f=tf.nn.relu, scope='Highway'
 
 	return output
 
-def context_gating(input_layer):
+def context_gating(input_layer, scope=None):
 		"""Context Gating (https://arxiv.org/pdf/1706.06905.pdf)
 		Args:
 		input_layer: Input layer in the following shape:
@@ -63,16 +64,18 @@ def context_gating(input_layer):
 
 		input_dim = input_layer.get_shape().as_list()[1] 
 		
-		gating_weights = tf.get_variable("gating_weights",
-		  [input_dim, input_dim],
-		  initializer = tf.random_normal_initializer(
-		  stddev = 1.0 / math.sqrt(input_dim)))
-		
+		with tf.variable_scope(scope or "Context_Gating"):
+			gating_weights = tf.get_variable("gating_weights",
+			  [input_dim, input_dim],
+			  initializer = tf.random_normal_initializer(
+			  stddev = 1.0 / math.sqrt(input_dim)))
+			
+	 
+			gating_biases = tf.get_variable("gating_biases",
+			[input_dim],
+			initializer = tf.random_normal_initializer(stddev = 1.0 / math.sqrt(input_dim)))
+
 		gates = tf.matmul(input_layer, gating_weights)
- 
-		gating_biases = tf.get_variable("gating_biases",
-		[input_dim],
-		initializer = tf.random_normal_initializer(stddev = 1.0 / math.sqrt(input_dim)))
 		gates += gating_biases
 
 		gates = tf.sigmoid(gates)
@@ -80,6 +83,30 @@ def context_gating(input_layer):
 		activation = tf.multiply(input_layer,gates)
 
 		return activation
+
+def feed_forward(input_layer, output_dim, activation=None, scope=None, l2_loss=None):
+
+	input_dim = input_layer.get_shape().as_list()[1]
+	with tf.variable_scope(scope or "feed forward"):
+		weights = tf.get_variable("weights",
+			  [input_dim, output_dim],
+			  initializer = tf.random_normal_initializer(
+			  stddev = 1.0 / math.sqrt(input_dim)))
+		biases = tf.get_variable("biases",
+			[output_dim],
+			initializer = tf.random_normal_initializer(stddev = 1.0 / math.sqrt(output_dim)))
+
+	if l2_loss is not None:
+		l2_loss += weights
+		l2_loss += biases
+
+	unactivated = tf.add(tf.matmul(input_layer, weights), biases)
+
+	if activation is not None:
+		return activation(unactivated)
+
+	return unactivated
+
 
 class Discriminator():
 	def __init__(self, embedding, sequence_length, start_token, batch_size):
@@ -89,6 +116,7 @@ class Discriminator():
 		self.encoder_units = 64
 		self.filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
 		self.num_filters = [100, 200, 200, 200, 200, 100, 100, 100, 100, 100, 160, 160]
+		self.num_filters = [x+100 for x in self.num_filters] # Add to each filter size
 		self.batch_size = batch_size
 		self.learning_rate = 1e-4
 		self.dropout = 0.75
@@ -168,18 +196,14 @@ class Discriminator():
 
 		features = tf.concat([combined_features_post_flat, combined_features_reply_flat], 1)
 
-		cg = context_gating(features)
-		features_highway = highway(cg, cg.get_shape()[1], 1, 0)
-		dropout = tf.nn.dropout(features_highway, keep_prob=self.dropout_keep_prob)
+		cg1 = context_gating(features, scope="Context-Gateing_1")
+		featuresScaled = feed_forward(cg1, (total_features_post + total_features_reply)//2, activation=None, scope="F1")
+		features_highway = highway(featuresScaled, 2, 0)
+		cg2 = context_gating(features_highway, scope="Context-Gateing_2")
+		dropout = tf.nn.dropout(cg2, keep_prob=self.dropout_keep_prob)
 
-		W1 = tf.Variable(tf.random_normal([total_features_reply + total_features_post, 2], stddev=std), name="W1")
-		b1 = tf.Variable(tf.random_normal([2], stddev=std), name="b1")
-		self.l2_loss += tf.nn.l2_loss(W1)
-		self.l2_loss += tf.nn.l2_loss(b1)
-		with tf.variable_scope("score"):
-			score = tf.add(tf.matmul(dropout, W1), b1)
-		with tf.variable_scope("truth_prob"):
-			truth_prob = tf.nn.softmax(score)[:,1]
+		score = feed_forward(dropout, 2, activation=None, scope="score", l2_loss=self.l2_loss)
+		truth_prob = tf.nn.softmax(score)[:,1]
 
 		return score, truth_prob
 
