@@ -84,7 +84,7 @@ def context_gating(input_layer, scope=None):
 
 		return activation
 
-def feed_forward(input_layer, output_dim, activation=None, scope=None, l2_loss=None):
+def feed_forward(input_layer, output_dim, activation=None, scope=None):
 
 	input_dim = input_layer.get_shape().as_list()[1]
 	with tf.variable_scope(scope or "feed forward"):
@@ -95,10 +95,6 @@ def feed_forward(input_layer, output_dim, activation=None, scope=None, l2_loss=N
 		biases = tf.get_variable("biases",
 			[output_dim],
 			initializer = tf.random_normal_initializer(stddev = 1.0 / math.sqrt(output_dim)))
-
-	if l2_loss is not None:
-		l2_loss += weights
-		l2_loss += biases
 
 	unactivated = tf.add(tf.matmul(input_layer, weights), biases)
 
@@ -202,7 +198,7 @@ class Discriminator():
 		cg2 = context_gating(features_highway, scope="Context-Gateing_2")
 		dropout = tf.nn.dropout(cg2, keep_prob=self.dropout_keep_prob)
 
-		score = feed_forward(dropout, 2, activation=None, scope="score", l2_loss=self.l2_loss)
+		score = feed_forward(dropout, 2, activation=None, scope="score")
 		truth_prob = tf.nn.softmax(score)[:,1]
 
 		return score, truth_prob
