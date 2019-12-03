@@ -17,8 +17,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 #loadModelId = "ChoLSTMpretrain"
 #storeModelId = "BahdanauGRUpretrainN"
 #loadModelId = "BahdanauGRUpretrainN"
-storeModelId = "BahdanauGRU"
-loadModelId = "BahdanauGRU"
+storeModelId = "BahdanauGRUNew"
+loadModelId = "BahdanauGRUNew"
 
 #storeModelId = "BahdanauGRUDiscN"
 #loadModelId = "BahdanauGRUDiscN"
@@ -175,11 +175,11 @@ class GANChat():
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
 		self.embedding_size_Gen = 32
-		self.embedding_size_Disc = 32
+		self.embedding_size_Disc = 64
 		self.learning_rate = 0.0001
-		self.token_sample_rate = 8
+		self.token_sample_rate = 16
 
-		#self.embedding = Embedding(self.vocab_size, self.embedding_size)
+		self.embedding = Embedding(self.vocab_size, self.embedding_size_Disc)
 		self.generator = Generator(self.embedding_size_Gen, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
@@ -192,31 +192,32 @@ class GANChat():
 
 	def train(self):
 		tf.reset_default_graph()
-		self.batch_size = 32
+		self.batch_size = 64
 		self.tokenProcessor = TokenProcessor()
 		self.data_loader = DataLoader(self.batch_size)
 		self.sequence_length = self.data_loader.getSequenceLength()
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size = 32
+		self.embedding_size_Gen = 32
+		self.embedding_size_Disc = 64
 		self.learning_rate = 0.0001
 		self.token_sample_rate = 8
 		self.storeModelEvery = 60*15
 		self.timeStampLastSave = time.time()
 
-		self.embedding = Embedding(self.vocab_size, self.embedding_size)
-		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		self.embedding = Embedding(self.vocab_size, self.embedding_size_Disc, "Disc")
+		self.generator = Generator(self.embedding_size_Gen, self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
-		trainingMode = MODE.adviserialTraining
-		loadModel = True
-		saveModel = True
-		evaluate = True
-		writeToTensorboard = True
-		autoBalance = True
+		trainingMode = MODE.preTrainGenerator
+		loadModel = False
+		saveModel = False
+		evaluate = False
+		writeToTensorboard = False
+		autoBalance = False
 		trainWithNoise = True
 		shutdownWhenSuggested = False
-		freezeDisc = True
+		freezeDisc = False
 
 		self.autoBalanceRange = 0.02
 

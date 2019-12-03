@@ -4,6 +4,7 @@ from tensorflow.contrib import rnn, seq2seq
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 from Embedding import Embedding
 
+'''
 class DecoderHelper(Helper):
 	def __init__(self, keep_length, sequence_length, embedding, reply_seq_embedding, start_token_embedding, _batch_size):
 		self.keep_length = keep_length
@@ -40,18 +41,19 @@ class DecoderHelper(Helper):
 		else:
 			next_token = tf.cond(tf.logical_or(tf.greater_equal(time+1, self.keep_length), finished), lambda: self.embedding.getEmbedding(sample_ids), lambda: self.reply_embedding[:,time,:])
 		return finished, next_token, state
-
+'''
 class Generator():
-	def __init__(self, embedding_size, sequence_length, start_token_symbol, vocab_size, learning_rate, batch_size):
+	def __init__(self, embedding_size, sequence_length, start_token_symbol, vocab_size, batch_size):
 		self.sequence_length = sequence_length
 		self.start_token_symbol = start_token_symbol
-		self.encoder_units = 2048
-		self.noiseSize = 256
+		self.encoder_units = 1024
+		self.noiseSize = 128
 		self.noiseStd = 1.0
+		self.loss_size = 1000.0
 		self.decoder_units = self.encoder_units + self.noiseSize
 		self.vocab_size = vocab_size
 		self.batch_size = batch_size
-		self.learning_rate = learning_rate
+		self.learning_rate = 1e-2
 		self.embedding_size = embedding_size
 		self.scope_name = "generator"
 		self.buildGraph()
@@ -59,12 +61,12 @@ class Generator():
 	def generate(self, sess, post, noise=True):
 		if(noise):
 			output = sess.run(
-					self.seqences[0],
+					self.sequence,
 					{self.post_seq: post})
 		else:
 			noise = np.zeros((self.batch_size, self.noiseSize))
 			output = sess.run(
-					self.seqences[0],
+					self.sequence,
 					{self.post_seq: post, self.noise: noise})
 		return output
 
@@ -82,15 +84,15 @@ class Generator():
 
 	def rolloutStep(self, sess, post, reply, keepIndex):
 		return sess.run(
-			self.seqences[keepIndex],
-			{self.post_seq: post, self.reply_seq: reply})
+			self.sequence,
+			{self.post_seq: post, self.reply_seq: reply, self.keepNumber: keepIndex})
 
 	def calculateReward(self, sess, post, reply, tokenSampleRate, discriminator):
 		rewards = np.zeros((self.batch_size, self.sequence_length))
 		for keepNumber in range(1,self.sequence_length):
 			for _ in range(tokenSampleRate):
-				sampleReply = self.rolloutStep(sess, post, reply, keepNumber)
-				rewards[:,keepNumber-1] += discriminator.evaluate(sess, post, sampleReply)
+				sample_reply = self.rolloutStep(sess, post, reply, keepNumber)
+				rewards[:,keepNumber-1] += discriminator.evaluate(sess, post, sample_reply)
 		rewards[:,-1] = discriminator.evaluate(sess, post, reply) * tokenSampleRate
 		return rewards / tokenSampleRate
 
@@ -118,37 +120,35 @@ class Generator():
 		self.ta_reply_seq = self.ta_reply_seq.unstack(tf.transpose(self.reply_seq, perm=[1, 0])) #seq_length x batch
 
 		self.ta_emb_post_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
-		self.ta_emb_post_seq = self.ta_emb_post_seq.unstack(tf.transpose(self.embedded_post_seq, perm=[1, 0, 2])) #seq_length x batch x embedding
+		self.ta_emb_post_seq = self.ta_emb_post_seq.unstack(tf.transpose(self.embedded_post, perm=[1, 0, 2])) #seq_length x batch x embedding
 
 		self.ta_emb_reply_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
-		self.ta_emb_reply_seq = self.ta_emb_reply_seq.unstack(tf.transpose(self.embedded_reply_seq, perm=[1, 0, 2])) #seq_length x batch x embedding
+		self.ta_emb_reply_seq = self.ta_emb_reply_seq.unstack(tf.transpose(self.embedded_reply, perm=[1, 0, 2])) #seq_length x batch x embedding
 
-	def buildTrainingGraph(self, sequence, logits):
-
+	def buildTrainingGraph(self, logits):
 		self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
 		#for r in self.generatorVariables:
 			#print(r.name)
 			#print(r.shape)
 
-		with tf.variable_scope("pretrain"):
-			#logits = tf.log(tf.clip_by_value(self.seqences_logits[self.sequence_length], 1e-8,1-1e-8))
-			self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=logits))
-			pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-			self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), 5.0)
-			self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.generatorVariables))
-			self.pretrain_summary = tf.summary.scalar("generator_pretrain_loss", self.pretrain_loss)
+		#Pretrain
+		self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=logits))
+		pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+		self.pretrain_grad, _ = tf.clip_by_global_norm(tf.gradients(self.pretrain_loss, self.generatorVariables), 5.0)
+		self.pretrain_update = pretrain_optimizer.apply_gradients(zip(self.pretrain_grad, self.generatorVariables))
+		self.pretrain_summary = tf.summary.scalar("generator_pretrain_loss", self.pretrain_loss)
 
-		with tf.variable_scope("RL-learning"):
-			genProb = tf.nn.softmax(logits)
-			genLogProb = tf.log(tf.clip_by_value(genProb, 1e-8,1-1e-8))
-			self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(sequence, self.vocab_size) * genLogProb, -1) * self.rewards)
-			#self.loss = tf.reduce_mean(tf.reduce_sum(tf.one_hot(sequence, self.vocab_size) * genLogProb, -1) * self.rewards)# ?? WTF
-			optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-			self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
-			self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))
-			self.train_summary = tf.summary.scalar("generator_loss", self.loss)
+		#RL-Learning
+		genProb = tf.nn.softmax(logits)
+		genLogProb = tf.log(tf.clip_by_value(genProb, 1e-20, 1.0))
+		self.loss = -tf.reduce_mean(tf.reduce_sum(tf.one_hot(self.reply_seq, self.vocab_size) * genLogProb, -1) * self.rewards)*self.loss_size
+		optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+		self.grad, _ = tf.clip_by_global_norm(tf.gradients(self.loss, self.generatorVariables), 5.0)
+		self.update = optimizer.apply_gradients(zip(self.grad, self.generatorVariables))
+		self.train_summary = tf.summary.scalar("generator_loss", self.loss)
 
 	def buildBahdanauModel(self):
+		'''
 		self.encoder_RNN_fw = rnn.GRUCell(self.encoder_units//2)
 		self.encoder_RNN_bw = rnn.GRUCell(self.encoder_units//2)
 
@@ -183,49 +183,53 @@ class Generator():
 
 			seqences.append(tf.reshape(final_outputs.sample_id, [self.batch_size, self.sequence_length])) # batch_size x sequence_length
 			seqences_logits.append(tf.reshape(final_outputs.rnn_output,[self.batch_size, self.sequence_length, self.vocab_size])) # batch_size x sequence_length x vocab_size
+		'''
 
 		######
 		std = 0.1
-		self.encoder_RNN_fw = rnn.GRUCell(self.encoder_units//2, initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_fw")
-		self.encoder_RNN_bw = rnn.GRUCell(self.encoder_units//2, initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_bw")
-		self.decoder_RNN = rnn.GRUCell(self.decoder_units, initializer=tf.initializers.random_normal(0, std), name="decoder_RNN")
-		self.decoder_W = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=std), name="decoder_W")
+		self.encoder_RNN_fw = rnn.GRUCell(self.encoder_units//2, kernel_initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_fw")
+		self.encoder_RNN_bw = rnn.GRUCell(self.encoder_units//2, kernel_initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_bw")
+		self.decoder_RNN = rnn.GRUCell(self.decoder_units, kernel_initializer=tf.initializers.random_normal(0, std), name="decoder_RNN")
+		self.decoder_W = tf.Variable(tf.random_normal([self.decoder_units//2, self.vocab_size], stddev=std), name="decoder_W")
 		self.decoder_b = tf.Variable(tf.random_normal([self.vocab_size], stddev=std), name="decoder_b")
 
 		sequence = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
 		sequence_logits = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
 
-		ta_encoder_outputs_fw = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
-		ta_encoder_outputs_bw = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
+		ta_encoder_outputs_fw = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)#, clear_after_read=False)
+		ta_encoder_outputs_bw = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)#, clear_after_read=False)
 
 		def loop_encoder_fw(time, inputs, cell_state, ta_encoder_outputs_fw):
 			_, next_cell_state = self.encoder_RNN_fw(inputs, cell_state)
-			ta_encoder_outputs_fw.write(time, next_cell_state)
+			ta_encoder_outputs_fw = ta_encoder_outputs_fw.write(time, next_cell_state)
 			next_inputs = self.ta_emb_post_seq.read(time)
 			return time + 1, next_inputs, next_cell_state, ta_encoder_outputs_fw
 
 		def loop_encoder_bw(time, inputs, cell_state, ta_encoder_outputs_bw):
 			_, next_cell_state = self.encoder_RNN_bw(inputs, cell_state)
-			ta_encoder_outputs_bw.write(time, next_cell_state)
+			ta_encoder_outputs_bw = ta_encoder_outputs_bw.write(time, next_cell_state)
 			next_inputs = self.ta_emb_post_seq.read(time)
 			return time - 1, next_inputs, next_cell_state, ta_encoder_outputs_bw
 
 		_, _,_, ta_encoder_outputs_fw = control_flow_ops.while_loop(
 			cond=lambda time, _1, _2, _3: time < self.sequence_length,
 			body=loop_encoder_fw,
-			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, self.encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32)), ta_encoder_outputs_fw)
+			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, self.encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32), ta_encoder_outputs_fw))
 
 		_, _,_, ta_encoder_outputs_bw = control_flow_ops.while_loop(
 			cond=lambda time, _1, _2, _3: time >= 0,
 			body=loop_encoder_bw,
-			loop_vars=(tf.constant(self.sequence_length - 1, dtype=tf.int32), self.embedded_start_token, self.encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32)), ta_encoder_outputs_bw)
+			loop_vars=(tf.constant(self.sequence_length - 1, dtype=tf.int32), self.embedded_start_token, self.encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32), ta_encoder_outputs_bw))
 
 		encoder_outputs_fw = tf.transpose(ta_encoder_outputs_fw.stack(), perm=[1, 0, 2])  # batch_size x seq_length x units
 		encoder_outputs_bw = tf.transpose(ta_encoder_outputs_bw.stack(), perm=[1, 0, 2])  # batch_size x seq_length x units
+		print(encoder_outputs_fw)
+		print(encoder_outputs_bw)
 		encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 2)
-
+		print(encoder_outputs)
+		#encoder_outputs = encoder_outputs_fw
 		attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs)
-		self.attention_RNN = seq2seq.AttentionWrapper(decoder_RNN, attention, attention_layer_size=self.decoder_units//2)
+		self.attention_RNN = seq2seq.AttentionWrapper(self.decoder_RNN, attention, attention_layer_size=self.decoder_units//2)
 
 		decoderH0 = tf.zeros((self.batch_size, self.encoder_units), dtype=tf.float32)
 		decoderH0 = tf.concat([decoderH0, self.noise], 1) # batch_size x decoder_units
@@ -255,7 +259,7 @@ class Generator():
 		time, inputs, cell_state, sequence, keepNumber = control_flow_ops.while_loop(
 			cond=lambda time, _1, _2, _3, keepNumber: time < keepNumber,
 			body=loop_keep,
-			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0), sequence, self.keepNumber))
+			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, self.attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0), sequence, self.keepNumber))
 
 		_, _, _, sequence = control_flow_ops.while_loop(
 			cond=lambda time, _1, _2, _3: time < self.sequence_length,
@@ -265,21 +269,20 @@ class Generator():
 		_, _, _, sequence_logits = control_flow_ops.while_loop(
 			cond=lambda time, _1, _2, _3: time < self.sequence_length,
 			body=loop_prob,
-			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, encoder_cell_state, sequence_logits))
+			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, self.attention_RNN.zero_state(self.batch_size, dtype=tf.float32).clone(cell_state=decoderH0), sequence_logits))
 
 		sequence = tf.transpose(sequence.stack(), perm=[1, 0])  # batch_size x seq_length
 		sequence_logits = tf.transpose(sequence_logits.stack(), perm=[1, 0, 2])  # batch_size x seq_length x vocab_size
 
 		######
 
-		return seqences, seqences_logits
+		return sequence, sequence_logits
 
 	def buildGraph(self):
 		with tf.variable_scope(self.scope_name):
 			self.buildInputGraph()
 
-			#self.seqences, self.seqences_logits = self.buildChoModel()
-			self.seqences, self.seqences_logits = self.buildBahdanauModel()
+			self.sequence, self.sequence_logits = self.buildBahdanauModel()
 
-			self.buildTrainingGraph(self.seqences[self.sequence_length], self.seqences_logits[self.sequence_length])
+			self.buildTrainingGraph(self.sequence_logits)
 			
