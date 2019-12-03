@@ -174,12 +174,13 @@ class GANChat():
 		self.sequence_length = self.data_loader.getSequenceLength()
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size = 32
+		self.embedding_size_Gen = 32
+		self.embedding_size_Disc = 32
 		self.learning_rate = 0.0001
 		self.token_sample_rate = 8
 
-		self.embedding = Embedding(self.vocab_size, self.embedding_size)
-		self.generator = Generator(self.embedding, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		#self.embedding = Embedding(self.vocab_size, self.embedding_size)
+		self.generator = Generator(self.embedding_size_Gen, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		saver = tf.train.Saver()

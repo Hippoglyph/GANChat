@@ -1,10 +1,10 @@
 import tensorflow as tf
 
 class Embedding():
-	def __init__(self, vocab_size, embedding_size):
+	def __init__(self, vocab_size, embedding_size, name):
 		self.vocab_size = vocab_size
 		self.embedding_size = embedding_size
-		self.name_scope = "embedding"
+		self.name_scope = "embedding_"+name
 		self.buildGraph()
 
 	def buildGraph(self):
@@ -21,3 +21,6 @@ class Embedding():
 
 	def getNameScope(self):
 		return self.name_scope
+
+	def getEmbeddingSize(self):
+		return self.embedding_size
