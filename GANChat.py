@@ -174,13 +174,12 @@ class GANChat():
 		self.sequence_length = self.data_loader.getSequenceLength()
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size_Gen = 32
 		self.embedding_size_Disc = 64
 		self.learning_rate = 0.0001
 		self.token_sample_rate = 16
 
 		self.embedding = Embedding(self.vocab_size, self.embedding_size_Disc)
-		self.generator = Generator(self.embedding_size_Gen, self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
+		self.generator = Generator(self.sequence_length, self.start_token, self.vocab_size,self.learning_rate, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		saver = tf.train.Saver()
@@ -192,21 +191,20 @@ class GANChat():
 
 	def train(self):
 		tf.reset_default_graph()
-		self.batch_size = 64
+		self.batch_size = 32
 		self.tokenProcessor = TokenProcessor()
 		self.data_loader = DataLoader(self.batch_size)
 		self.sequence_length = self.data_loader.getSequenceLength()
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size_Gen = 32
 		self.embedding_size_Disc = 64
 		self.learning_rate = 0.0001
-		self.token_sample_rate = 8
+		self.token_sample_rate = 16
 		self.storeModelEvery = 60*15
 		self.timeStampLastSave = time.time()
 
 		self.embedding = Embedding(self.vocab_size, self.embedding_size_Disc, "Disc")
-		self.generator = Generator(self.embedding_size_Gen, self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
+		self.generator = Generator(self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
 		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
 
 		trainingMode = MODE.preTrainGenerator
@@ -257,6 +255,7 @@ class GANChat():
 					if trainingMode == MODE.preTrainGenerator:
 						postBatch, replyBatch = self.data_loader.nextBatch()
 						summary, genLoss = self.generator.pretrain(sess, postBatch, replyBatch, noise = trainWithNoise)
+						print(genLoss)
 						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
 
 					elif trainingMode == MODE.preTrainDiscriminator:
