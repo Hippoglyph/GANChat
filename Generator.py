@@ -81,7 +81,7 @@ class Generator():
 		self.ta_reply_seq = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length)
 		self.ta_reply_seq = self.ta_reply_seq.unstack(tf.transpose(self.reply_seq, perm=[1, 0])) #seq_length x batch
 
-		self.ta_emb_post_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
+		self.ta_emb_post_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, clear_after_read = False)
 		self.ta_emb_post_seq = self.ta_emb_post_seq.unstack(tf.transpose(self.embedded_post, perm=[1, 0, 2])) #seq_length x batch x embedding
 
 		self.ta_emb_reply_seq = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length)
@@ -89,9 +89,9 @@ class Generator():
 
 	def buildTrainingGraph(self, logits):
 		self.generatorVariables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name) + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.embedding.getNameScope())
-		for r in self.generatorVariables:
-			print(r.name)
-			print(r.shape)
+		#for r in self.generatorVariables:
+		#	print(r.name)
+		#	print(r.shape)
 
 		#Pretrain
 		self.pretrain_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.reply_seq, logits=logits))
@@ -120,7 +120,25 @@ class Generator():
 		sequence = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
 		sequence_logits = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
 
-		(encoder_outputs_fw, encoder_outputs_bw), encoder_final_state = tf.nn.bidirectional_dynamic_rnn(self.encoder_RNN_fw, self.encoder_RNN_bw, self.embedded_post, dtype=tf.float32, initial_state_fw=self.encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32),initial_state_bw=self.encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32))
+		encoder_outputs_fw = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
+		encoder_outputs_bw = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
+
+		def loop_encoder(time, inputs_fw, inputs_bw, cell_state_fw, cell_state_bw, encoder_outputs_fw, encoder_outputs_bw):
+			_, next_cell_state_fw = self.encoder_RNN_fw(inputs_fw, cell_state_fw)
+			_, next_cell_state_bw = self.encoder_RNN_bw(inputs_bw, cell_state_bw)
+			next_inputs_fw = self.ta_emb_post_seq.read(time)
+			next_inputs_bw = self.ta_emb_post_seq.read(self.sequence_length - 1 - time)
+			encoder_outputs_fw = encoder_outputs_fw.write(time, next_cell_state_fw)
+			encoder_outputs_bw = encoder_outputs_bw.write(self.sequence_length - 1 - time, next_cell_state_bw)
+			return time + 1, next_inputs_fw, next_inputs_bw, next_cell_state_fw, next_cell_state_bw, encoder_outputs_fw, encoder_outputs_bw
+
+		_, _, _, _, _, encoder_outputs_fw, encoder_outputs_bw  = control_flow_ops.while_loop(
+			cond=lambda time, _1, _2, _3, _4, _5, _6: time < self.sequence_length,
+			body=loop_encoder,
+			loop_vars=(tf.constant(0, dtype=tf.int32), self.embedded_start_token, self.embedded_start_token, self.encoder_RNN_fw.zero_state(self.batch_size, dtype=tf.float32), self.encoder_RNN_bw.zero_state(self.batch_size, dtype=tf.float32), encoder_outputs_fw, encoder_outputs_bw))
+
+		encoder_outputs_fw = tf.transpose(encoder_outputs_fw.stack(), perm=[1, 0, 2])  # batch_size x seq_length x units
+		encoder_outputs_bw = tf.transpose(encoder_outputs_bw.stack(), perm=[1, 0, 2])  # batch_size x seq_length x units
 
 		encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 2)
 

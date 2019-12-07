@@ -326,9 +326,8 @@ class GANChat():
 
 	def play(self):
 		tf.reset_default_graph()
-		self.embedding = Embedding(6, 5)
-		self.discriminator = Discriminator(self.embedding, 4, 0, 0.001, 3)
-		self.generator = Generator(self.embedding, 4, 0, 6, 0.001, 3)
+		#self.discriminator = Discriminator(self.embedding, 4, 0, 0.001, 3)
+		self.generator = Generator(sequence_length=4, start_token_symbol=0, vocab_size=6, batch_size=3)
 
 		dummyPost = [[0,1,2,3],
 					[3,2,1,0],
@@ -337,11 +336,20 @@ class GANChat():
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
+			for i in range(10000):
+				_, result = self.generator.pretrain(sess, dummyPost, dummyReply)
+				if i % 100 == 0:
+					print(result)
+			#result = sess.run(
+			#		[self.generator.sequence_logits],
+			#		{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply}
+			#	)
+			#print(result)
 			#result = sess.run(
 			#	[self.generator.seqences],
 			#	{self.generator.post_seq: dummyPost, self.generator.reply_seq: dummyReply})
-			result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
-			print(result)
+			#result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
+			#print(result)
 
 			#result  = self.generator.calculateReward(sess, dummyPost, dummyReply, 5, self.discriminator)
 			#result = self.discriminator.evaluate(sess, dummyPost, dummyReply)
@@ -361,5 +369,5 @@ class GANChat():
 			#	print(k)
 				
 if __name__ == "__main__":
-	GANChat().train()
-	#GANChat().infer()
+	#GANChat().train()
+	GANChat().play()
