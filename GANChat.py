@@ -326,18 +326,19 @@ class GANChat():
 
 	def play(self):
 		tf.reset_default_graph()
-		#self.discriminator = Discriminator(self.embedding, 4, 0, 0.001, 3)
+		self.discriminator = Discriminator(sequence_length=4, vocab_size=6, batch_size=3)
 		self.generator = Generator(sequence_length=4, start_token_symbol=0, vocab_size=6, batch_size=3)
 
 		dummyPost = [[0,1,2,3],
 					[3,2,1,0],
 					[2,2,3,1]]
 		dummyReply = dummyPost
+		dummyLabels = [1,0,0]
 
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
-			for i in range(10000):
-				_, result = self.generator.pretrain(sess, dummyPost, dummyReply)
+			for i in range(1000):
+				_, result = self.discriminator.train(sess, dummyPost, dummyReply, dummyLabels)
 				if i % 100 == 0:
 					print(result)
 			#result = sess.run(

@@ -211,6 +211,3 @@ class Discriminator():
 			score, self.truth_prob = self.buildCNNModel()
 
 			self.buildTrainingGraph(score)
-
-			
-
