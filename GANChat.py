@@ -1,9 +1,9 @@
 import tensorflow as tf
-from Embedding import Embedding
 from Generator import Generator
 from Discriminator import Discriminator
 from TokenProcessor import TokenProcessor
 from DataLoader import DataLoader
+from DataLoader import DiscDataLoader
 import numpy as np
 import os
 import time
@@ -34,13 +34,16 @@ pathToLoadModel = os.path.join(pathToLoadModelDir, "model.ckpt")
 
 tensorboardDir = os.path.join(os.path.dirname(__file__), "tensorboard")
 tensorboardDir = os.path.join(tensorboardDir, storeModelId)
-iterationFile = "iteration"
+IterFile = "Iteration"
+TBPreTrainGenIterFile = "TBPreTrainGenIter"
+TBGenIterFile = "TBGenIter"
+TBDiscIterFile = "TBDiscIter"
 timeFile = "trainingTime"
 
 class MODE:
 	preTrainGenerator = 0
 	preTrainDiscriminator = 1
-	adviserialTraining = 2
+	adversarialTraining = 2
 
 class LossTracker():
 	def __init__(self):
@@ -48,18 +51,13 @@ class LossTracker():
 		self.printStamp = time.time()
 		self.genLossNum = 0
 		self.discLossNum = 0
-		self.positiveBalanceNum = 0
-		self.negativeBalanceNum = 0
 		self.timePerItNum = 0
 		self.genLossAcc = 0.0
 		self.discLossAcc = 0.0
-		self.positiveBalanceAcc = 0.0
-		self.negativeBalanceAcc = 0.0
 		self.timePerItAcc = 0.0
-		self.printEvery = 60*10
+		self.printEvery = 30#60*60*1
 		self.timeSinceLastLog = time.time()
 		self.appendSeconds = 0
-		self.suggestShutdown = False
 
 	def printEverySecond(self, second):
 		self.printEvery = second
@@ -67,7 +65,7 @@ class LossTracker():
 	def addSeconds(self, seconds):
 		self.appendSeconds = seconds
 
-	def log(self, genLoss, discLoss, positiveBalance, negativeBalance, iteration, epochProgress):
+	def log(self, genLoss, discLoss, iteration, epochProgress):
 		self.timePerItNum += 1
 		self.timePerItAcc += time.time() - self.timeSinceLastLog
 		self.timeSinceLastLog = time.time()
@@ -77,30 +75,17 @@ class LossTracker():
 		if discLoss:
 			self.discLossNum += 1
 			self.discLossAcc += discLoss
-		if positiveBalance:
-			self.positiveBalanceNum += 1
-			self.positiveBalanceAcc += positiveBalance
-		if negativeBalance:
-			self.negativeBalanceNum += 1
-			self.negativeBalanceAcc += negativeBalance
 		if time.time() - self.printStamp >= self.printEvery:
 			logString = "Iteration {:>7}".format(iteration)
 			if genLoss:
 				logString += ", GenLoss {:>5.3f}".format(self.genLossAcc/self.genLossNum)
 			if discLoss:
 				logString += ", DiscLoss {:>5.3f}".format(self.discLossAcc/self.discLossNum)
-			if positiveBalance:
-				logString += ", positiveBalance {:>5.3f}".format(self.positiveBalanceAcc/self.positiveBalanceNum)
-			if negativeBalance:
-				logString += ", negativeBalance {:>5.3f}".format(self.negativeBalanceAcc/self.negativeBalanceNum)
 			logString += ", {:>6.3f} sec/iteration".format(self.timePerItAcc/self.timePerItNum)
 			logString += ", epoch {:>3.2f}%".format(epochProgress*100)
 			logString += ", hour {:>4}".format(int((time.time()-self.startTime + self.appendSeconds)/(60*60)))
 			logString += ", Time " + time.strftime("%H:%M:%S", time.localtime(time.time()))
 			print(logString)
-
-			if negativeBalance:
-				self.suggestShutdown = self.positiveBalanceAcc/self.positiveBalanceNum - self.negativeBalanceAcc/self.negativeBalanceNum > 0.03
 
 			self.genLossNum = 0
 			self.discLossNum = 0
@@ -109,13 +94,13 @@ class LossTracker():
 			self.discLossAcc = 0.0
 			self.timePerItAcc = 0.0
 			self.printStamp = time.time()
-		return self.suggestShutdown
+		return
 
 class GANChat():
 	def __init__(self):
 		pass
 
-	def saveModel(self, sess, saver, saveModel, iteration):
+	def saveModel(self, sess, saver, saveModel, iteration, TBPreTrainGenIter, TBGenIter, TBDiscIter):
 		if saveModel:
 			if not os.path.exists(pathToStoreModelDir):
 				os.makedirs(pathToStoreModelDir)
@@ -123,14 +108,20 @@ class GANChat():
 					file.write(str(0))
 			print("Saving model...")
 			save_path = saver.save(sess, pathToStoreModel)
-			with open(os.path.join(pathToStoreModelDir, iterationFile), 'w', encoding="utf-8") as file:
+			with open(os.path.join(pathToStoreModelDir, IterFile), 'w', encoding="utf-8") as file:
 				file.write(str(iteration))
+			with open(os.path.join(pathToStoreModelDir, TBPreTrainGenIterFile), 'w', encoding="utf-8") as file:
+				file.write(str(TBPreTrainGenIter))
+			with open(os.path.join(pathToStoreModelDir, TBGenIterFile), 'w', encoding="utf-8") as file:
+				file.write(str(TBGenIter))
+			with open(os.path.join(pathToStoreModelDir, TBDiscIterFile), 'w', encoding="utf-8") as file:
+				file.write(str(TBDiscIter))
 			with open(os.path.join(pathToStoreModelDir, timeFile), 'r', encoding="utf-8") as file:
 				totalSeconds = file.read()
 			with open(os.path.join(pathToStoreModelDir, timeFile), 'w', encoding="utf-8") as file:
 				file.write(str(int(int(time.time() - self.timeStampLastSave) + int(totalSeconds))))
 			self.timeStampLastSave = time.time()
-			print("Model saved ("+str(iteration)+"): " + save_path)
+			print("Model saved (" +time.strftime("%H:%M:%S", time.localtime(time.time()))+")" + save_path)
 
 	def loadModel(self, sess, saver):
 		if not os.path.exists(pathToLoadModelDir):
@@ -138,18 +129,24 @@ class GANChat():
 			return
 		print("Loading model...")
 		saver.restore(sess, pathToLoadModel)
-		with open(os.path.join(pathToLoadModelDir, iterationFile), 'r', encoding="utf-8") as file:
+		with open(os.path.join(pathToLoadModelDir, IterFile), 'r', encoding="utf-8") as file:
 			iteration = file.read()
+		with open(os.path.join(pathToLoadModelDir, TBPreTrainGenIterFile), 'r', encoding="utf-8") as file:
+			TBPreTrainGenIter = file.read()
+		with open(os.path.join(pathToLoadModelDir, TBGenIterFile), 'r', encoding="utf-8") as file:
+			TBGenIter = file.read()
+		with open(os.path.join(pathToLoadModelDir, TBDiscIterFile), 'r', encoding="utf-8") as file:
+			TBDiscIter = file.read()
 		with open(os.path.join(pathToLoadModelDir, timeFile), 'r', encoding="utf-8") as file:
 			startime = file.read()
 		print("Model loaded "+pathToLoadModel+ " (" + str(iteration)+")")
-		return int(iteration), int(startime)
+		return int(iteration), int(TBPreTrainGenIter), int(TBGenIter), int(TBDiscIter), int(startime)
 
-	def evaluate(self, sess, iteration, batch_size, noise = True, path = pathToEvaluateDir):
+	def evaluate(self, sess, iteration, batch_size, path = pathToEvaluateDir):
 		if not os.path.exists(path):
 			os.makedirs(path)
 		post, reply = self.data_loader.getTestBatch(batch_size)
-		fakeReply = self.generator.generate(sess, post, noise)
+		fakeReply = self.generator.generate(sess, post)
 
 		dataPoints = []
 
@@ -166,6 +163,7 @@ class GANChat():
 		if writeToTensorboard:
 			writer.add_summary(summary, iteration)
 
+	'''
 	def infer(self):
 		tf.reset_default_graph()
 		self.batch_size = 32
@@ -187,48 +185,47 @@ class GANChat():
 		with tf.Session() as sess:
 			iteration, _ = self.loadModel(sess, saver)
 			self.evaluate(sess, iteration, self.batch_size, noise = True, path = pathToEvaluateDummy)
+	'''
 
 
 	def train(self):
 		tf.reset_default_graph()
-		self.batch_size = 32
+		self.batch_size = 64
 		self.tokenProcessor = TokenProcessor()
 		self.data_loader = DataLoader(self.batch_size)
 		self.sequence_length = self.data_loader.getSequenceLength()
 		self.vocab_size = self.tokenProcessor.getVocabSize()
 		self.start_token = self.tokenProcessor.getStartToken()
-		self.embedding_size_Disc = 64
-		self.learning_rate = 0.0001
 		self.token_sample_rate = 16
-		self.storeModelEvery = 60*15
+		self.storeModelEvery = 60*60*1
+		self.discEpochSize = 50000
 		self.timeStampLastSave = time.time()
 
-		self.embedding = Embedding(self.vocab_size, self.embedding_size_Disc, "Disc")
 		self.generator = Generator(self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
-		self.discriminator = Discriminator(self.embedding, self.sequence_length, self.start_token, self.learning_rate, self.batch_size)
+		self.discriminator = Discriminator(self.sequence_length, self.vocab_size, self.batch_size)
+		self.disc_data_loader = DiscDataLoader(self.data_loader, self.generator, self.discEpochSize)
 
 		trainingMode = MODE.preTrainGenerator
 		loadModel = False
 		saveModel = False
 		evaluate = False
 		writeToTensorboard = False
-		autoBalance = False
-		trainWithNoise = True
-		shutdownWhenSuggested = False
-		freezeDisc = False
-
-		self.autoBalanceRange = 0.02
 
 		saver = tf.train.Saver()
 
 		lossTracker = LossTracker()
 		genLoss = None
 		discLoss = None
-		positiveBalance = 0.5
-		negativeBalance = 0.5
+
 		iterationStart = 0
 		currentIteration = 0
+		TBPreTrainGenIter = 0
+		TBGenIter = 0
+		TBDiscIter = 0
 		storedModelTimestamp = time.time()
+
+		discIteration = -1
+		adversarialIteration = 0
 		with tf.Session() as sess:
 			try:
 				if writeToTensorboard:
@@ -236,13 +233,13 @@ class GANChat():
 				else:
 					writer = None
 				if loadModel:
-					iterationStart, startTime = self.loadModel(sess, saver)
+					iterationStart, TBPreTrainGenIter, TBGenIter, TBDiscIter, startTime = self.loadModel(sess, saver)
 					lossTracker.addSeconds(startTime)
 				else:
 					print("Initialize new graph")
 					sess.run(tf.global_variables_initializer())
 
-				trainingString = "Adviserial Training"
+				trainingString = "Adversarial Training"
 				if trainingMode == MODE.preTrainGenerator:
 					trainingString = "Pretraining Generator"
 				elif trainingMode == MODE.preTrainDiscriminator:
@@ -253,80 +250,55 @@ class GANChat():
 					currentIteration = iteration
 
 					if trainingMode == MODE.preTrainGenerator:
-						postBatch, replyBatch = self.data_loader.nextBatch()
-						summary, genLoss = self.generator.pretrain(sess, postBatch, replyBatch, noise = trainWithNoise)
-						print(genLoss)
-						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+						post, reply = self.data_loader.nextBatch()
+						summary, genLoss = self.generator.pretrain(sess, post, reply)
+						self.tensorboardWrite(writer, summary, TBPreTrainGenIter, writeToTensorboard)
+						TBPreTrainGenIter += 1
 
 					elif trainingMode == MODE.preTrainDiscriminator:
-						postBatch, replyBatch = self.data_loader.nextBatch()
-						fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-						realSequences = replyBatch
+						discIteration = (discIteration+1) % (5*(self.discEpochSize//self.batch_size)) #Train 5 times on same disc epoch
+						if discIteration == 0:
+							self.disc_data_loader.createDataset(sess)
+						post, reply, labels = self.disc_data_loader.nextBatch()
+						summary, discLoss = self.discriminator.train(sess, post, reply, labels)
+						self.tensorboardWrite(writer, summary, TBDiscIter, writeToTensorboard)
+						TBDiscIter += 1
 
-						negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-						positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+					elif trainingMode == MODE.adversarialTraining:
 
-						posts =  np.concatenate([postBatch, postBatch])
-						samples = np.concatenate([fakeSequences, realSequences])
-						labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-						for _ in range(3):
-							index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace = False)
-							summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index])
-						self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-
-					elif trainingMode == MODE.adviserialTraining:
-						#Generator
-						if not autoBalance or negativeBalance - positiveBalance < self.autoBalanceRange:
-							for _ in range(1):
-								postBatch, replyBatch = self.data_loader.nextBatch()
-								genSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-								rewards = self.generator.calculateReward(sess, postBatch, genSequences, self.token_sample_rate, self.discriminator)
-								summary, genLoss = self.generator.train(sess, postBatch, genSequences, rewards)
-							self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
+						if adversarialIteration == 0: #Train generator only once every 15 disc epoch
+							#Generator
+							post, reply = self.data_loader.nextBatch()
+							fakeReply = self.generator.generate(sess, post)
+							rewards = self.generator.calculateReward(sess, post, fakeReply, self.token_sample_rate, self.discriminator)
+							summary, genLoss = self.generator.train(sess, post, fakeReply, rewards)
+							self.tensorboardWrite(writer, summary, TBGenIter, writeToTensorboard)
+							TBGenIter += 1
 						
 						#Discriminator
-						for _ in range(1):
-							postBatch, replyBatch = self.data_loader.nextBatch()
-							fakeSequences = self.generator.generate(sess, postBatch, noise = trainWithNoise)
-							realSequences = replyBatch
+						if adversarialIteration % ((self.discEpochSize//self.batch_size)*5) == 0: #Train 5 times on same disc epoch
+							self.disc_data_loader.createDataset(sess)
+						post, reply, labels = self.disc_data_loader.nextBatch()
+						summary, discLoss = self.discriminator.train(sess, post, reply, labels)
+						self.tensorboardWrite(writer, summary, TBDiscIter, writeToTensorboard)
+						TBDiscIter += 1
 
-							negativeBalance = np.mean(self.discriminator.evaluate(sess, postBatch, fakeSequences))
-							positiveBalance = np.mean(self.discriminator.evaluate(sess, postBatch, realSequences))
+						adversarialIteration = (adversarialIteration+1) % ((self.discEpochSize//self.batch_size)*5*15)
 
-							if not freezeDisc:
-
-								gradientPenalty = 1.0 if not autoBalance or positiveBalance - negativeBalance < 0 else 1.0 - (positiveBalance - negativeBalance)/self.autoBalanceRange
-								gradientPenalty = np.clip(gradientPenalty, 1e-20, 1.0)
-
-								posts =  np.concatenate([postBatch, postBatch])
-								samples = np.concatenate([fakeSequences, realSequences])
-								labels = np.concatenate([np.zeros((self.batch_size,)),np.ones((self.batch_size,))])
-								for _ in range(3):
-									index = np.random.choice(samples.shape[0], size=(self.batch_size,), replace=False)
-									summary, discLoss = self.discriminator.train(sess, posts[index], samples[index], labels[index], gradientPenalty)
-								self.tensorboardWrite(writer, summary, iteration, writeToTensorboard)
-
-					suggestShutDown = lossTracker.log(genLoss, discLoss, positiveBalance, negativeBalance, iteration, self.data_loader.getEpochProgress())
-
-					if shutdownWhenSuggested and suggestShutDown:
-						self.saveModel(sess, saver, saveModel, iteration)
-						if evaluate:
-							self.evaluate(sess, iteration, self.batch_size, noise = trainWithNoise)
-						print("Imbalanced training - Forced shutdown")
-						sys.exit(0)
+					lossTracker.log(genLoss, discLoss, iteration, self.data_loader.getEpochProgress())
 
 					if time.time() - storedModelTimestamp >= self.storeModelEvery: #Store every self.storeModelEvery second
-						self.saveModel(sess, saver, saveModel, iteration)
+						self.saveModel(sess, saver, saveModel, iteration, TBPreTrainGenIter, TBGenIter, TBDiscIter)
 						storedModelTimestamp = time.time()
 						if evaluate:
-							self.evaluate(sess, iteration, self.batch_size, noise = trainWithNoise)
+							self.evaluate(sess, iteration, self.batch_size)
 
 			except (KeyboardInterrupt, SystemExit):
-				self.saveModel(sess, saver, saveModel, currentIteration)
+				self.saveModel(sess, saver, saveModel, currentIteration, TBPreTrainGenIter, TBGenIter, TBDiscIter)
 
 	def play(self):
 		tf.reset_default_graph()
-		self.discriminator = Discriminator(sequence_length=4, vocab_size=6, batch_size=3)
+		#elf.discriminator = Discriminator(sequence_length=4, vocab_size=6, batch_size=3)
 		self.generator = Generator(sequence_length=4, start_token_symbol=0, vocab_size=6, batch_size=3)
 
 		dummyPost = [[0,1,2,3],
@@ -338,8 +310,8 @@ class GANChat():
 		with tf.Session() as sess:
 			sess.run(tf.global_variables_initializer())
 			for i in range(1000):
-				_, result = self.discriminator.train(sess, dummyPost, dummyReply, dummyLabels)
-				if i % 100 == 0:
+				_, result = self.generator.pretrain(sess, dummyPost, dummyReply)
+				if i % 10 == 0:
 					print(result)
 			#result = sess.run(
 			#		[self.generator.sequence_logits],
@@ -370,5 +342,5 @@ class GANChat():
 			#	print(k)
 				
 if __name__ == "__main__":
-	#GANChat().train()
-	GANChat().play()
+	GANChat().train()
+	#GANChat().play()

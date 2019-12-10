@@ -21,28 +21,16 @@ class Generator():
 		self.scope_name = "generator"
 		self.buildGraph()
 
-	def generate(self, sess, post, noise=True):
-		if(noise):
-			output = sess.run(
-					self.sequence,
-					{self.post_seq: post})
-		else:
-			noise = np.zeros((self.batch_size, self.noiseSize))
-			output = sess.run(
-					self.sequence,
-					{self.post_seq: post, self.noise: noise})
+	def generate(self, sess, post):
+		output = sess.run(
+				self.sequence,
+				{self.post_seq: post})
 		return output
 
-	def pretrain(self, sess, post, reply, noise=True):
-		if(noise):
-			loss_summary, loss, _ = sess.run(
-					[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
-					{self.post_seq: post, self.reply_seq: reply})
-		else:
-			noise = np.zeros((self.batch_size, self.noiseSize))
-			loss_summary, loss, _ = sess.run(
-					[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
-					{self.post_seq: post, self.reply_seq: reply, self.noise: noise})
+	def pretrain(self, sess, post, reply):
+		loss_summary, loss, _ = sess.run(
+				[self.pretrain_summary, self.pretrain_loss, self.pretrain_update],
+				{self.post_seq: post, self.reply_seq: reply})
 		return loss_summary, loss
 
 	def rolloutStep(self, sess, post, reply, keepIndex):

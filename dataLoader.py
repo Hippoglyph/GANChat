@@ -2,6 +2,7 @@ from ProgressPrint import ProgressPrint
 import os
 import json
 import random
+import numpy as np
 
 pathToReddit = os.path.realpath("Reddit")
 pathToProcess = os.path.join(pathToReddit, "processed")
@@ -85,3 +86,45 @@ class DataLoader():
 
 	def getEpochProgress(self):
 		return self.pointer/self.trainingDatasetSize
+
+class DiscDataLoader():
+	def __init__(self, dataLoader, generator, epochSize):
+		self.batchSize = dataLoader.batchSize
+		self.epochSize = epochSize
+		self.dataLoader = dataLoader
+		self.numBatches = 0
+		self.pointer = 0
+		self.data = []
+
+	def createDataset(self, sess):
+		positiveData = []
+		negativeData = []
+
+		for _ in range(self.epochSize//self.batchSize):
+			post, reply = dataLoader.nextBatch()
+			fakereply = model.generate(sess, post)
+			for i in range(self.batchSize):
+				positiveData.append([post[i], reply[i]])
+				negativeData.append([post[i], fakereply[i]])
+
+		self.data = np.array(positiveData + negativeData)
+		self.labels = np.array([1 for _ in positiveData] + [0 for _ in negativeData])
+
+		shuffleIndex = np.random.permutation(np.arange(len(self.labels)))
+
+		self.data = self.data[shuffleIndex]
+		self.labels = self.labels[shuffleIndex]
+
+		self.numBatches = len(self.labels)//self.batchSize
+		self.data = self.data[:self.numBatches*self.batchSize]
+		self.labels = self.labels[:self.numBatches*self.batchSize]
+
+		self.data = np.split(self.data, self.numBatches, 0)
+		self.labels = np.split(self.labels, self.numBatches, 0)
+		self.pointer = 0
+
+	def nextBatch(self):
+		post, reply = np.transpose(self.data[self.pointer], (1,0,2))
+		label = self.labels[self.pointer]
+		self.pointer = (self.pointer + 1) % self.numBatches
+		return post, reply, label
