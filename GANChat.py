@@ -55,7 +55,7 @@ class LossTracker():
 		self.genLossAcc = 0.0
 		self.discLossAcc = 0.0
 		self.timePerItAcc = 0.0
-		self.printEvery = 30#60*60*1
+		self.printEvery = 15#60*60*1
 		self.timeSinceLastLog = time.time()
 		self.appendSeconds = 0
 

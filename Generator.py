@@ -103,7 +103,7 @@ class Generator():
 		self.encoder_RNN_fw = rnn.GRUCell(self.encoder_units//2, kernel_initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_fw")
 		self.encoder_RNN_bw = rnn.GRUCell(self.encoder_units//2, kernel_initializer=tf.initializers.random_normal(0, std), name="encoder_RNN_bw")
 		self.decoder_RNN = rnn.GRUCell(self.decoder_units, kernel_initializer=tf.initializers.random_normal(0, std), name="decoder_RNN")
-		self.decoder_W = tf.Variable(tf.random_normal([self.decoder_units//2, self.vocab_size], stddev=std), name="decoder_W")
+		self.decoder_W = tf.Variable(tf.random_normal([self.decoder_units, self.vocab_size], stddev=std), name="decoder_W")
 		self.decoder_b = tf.Variable(tf.random_normal([self.vocab_size], stddev=std), name="decoder_b")
 
 		sequence = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length, dynamic_size=False, infer_shape=True)
@@ -131,8 +131,8 @@ class Generator():
 
 		encoder_outputs = tf.concat([encoder_outputs_fw, encoder_outputs_bw], 2)
 
-		attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs)
-		self.attention_RNN = seq2seq.AttentionWrapper(self.decoder_RNN, attention, attention_layer_size=self.decoder_units//2)
+		attention = seq2seq.BahdanauAttention(num_units=self.decoder_units, memory=encoder_outputs, normalize=True)
+		self.attention_RNN = seq2seq.AttentionWrapper(self.decoder_RNN, attention, attention_layer_size=self.decoder_units, output_attention=False, alignment_history=True)
 
 		decoderH0 = tf.zeros((self.batch_size, self.encoder_units), dtype=tf.float32)
 		decoderH0 = tf.concat([decoderH0, self.noise], 1) # batch_size x decoder_units
