@@ -15,7 +15,7 @@ class Generator():
 		self.decoder_units = self.encoder_units + self.noiseSize
 		self.vocab_size = vocab_size
 		self.batch_size = batch_size
-		self.learning_rate = 1e-2
+		self.learning_rate = 1e-4
 		self.embedding_size = 32
 		self.grad_clip = 5.0
 		self.scope_name = "generator"
@@ -55,7 +55,7 @@ class Generator():
 
 	def buildInputGraph(self):
 		self.post_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="post_sequence")
-		self.reply_seq = tf.placeholder(tf.int32, shape=[self.batch_size, self.sequence_length], name="reply_sequence")
+		self.reply_seq = tf.placeholder_with_default(tf.zeros([self.batch_size, self.sequence_length], dtype=tf.int32), shape=[self.batch_size, self.sequence_length], name="reply_sequence")
 		self.rewards = tf.placeholder(tf.float32, shape=[self.batch_size, self.sequence_length], name="rewards")
 		self.noise = tf.placeholder_with_default(tf.random_normal([self.batch_size, self.noiseSize], 0.0, self.noiseStd), shape=[self.batch_size, self.noiseSize], name="noise")
 		self.keepNumber = tf.placeholder_with_default(0, shape=())

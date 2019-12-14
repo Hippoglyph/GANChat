@@ -88,7 +88,7 @@ class DataLoader():
 		return self.pointer/self.trainingDatasetSize
 
 class DiscDataLoader():
-	def __init__(self, dataLoader, generator, epochSize):
+	def __init__(self, dataLoader, epochSize):
 		self.batchSize = dataLoader.batchSize
 		self.epochSize = epochSize
 		self.dataLoader = dataLoader
@@ -96,13 +96,13 @@ class DiscDataLoader():
 		self.pointer = 0
 		self.data = []
 
-	def createDataset(self, sess):
+	def createDataset(self, sess, generator):
 		positiveData = []
 		negativeData = []
 
 		for _ in range(self.epochSize//self.batchSize):
-			post, reply = dataLoader.nextBatch()
-			fakereply = model.generate(sess, post)
+			post, reply = self.dataLoader.nextBatch()
+			fakereply = generator.generate(sess, post)
 			for i in range(self.batchSize):
 				positiveData.append([post[i], reply[i]])
 				negativeData.append([post[i], fakereply[i]])

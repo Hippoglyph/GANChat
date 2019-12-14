@@ -203,11 +203,11 @@ class GANChat():
 
 		self.generator = Generator(self.sequence_length, self.start_token, self.vocab_size, self.batch_size)
 		self.discriminator = Discriminator(self.sequence_length, self.vocab_size, self.batch_size)
-		self.disc_data_loader = DiscDataLoader(self.data_loader, self.generator, self.discEpochSize)
+		self.disc_data_loader = DiscDataLoader(self.data_loader, self.discEpochSize)
 
-		trainingMode = MODE.preTrainGenerator
+		trainingMode = MODE.adversarialTraining
 		loadModel = False
-		saveModel = False
+		saveModel = True
 		evaluate = False
 		writeToTensorboard = False
 
@@ -258,7 +258,7 @@ class GANChat():
 					elif trainingMode == MODE.preTrainDiscriminator:
 						discIteration = (discIteration+1) % (5*(self.discEpochSize//self.batch_size)) #Train 5 times on same disc epoch
 						if discIteration == 0:
-							self.disc_data_loader.createDataset(sess)
+							self.disc_data_loader.createDataset(sess, self.generator)
 						post, reply, labels = self.disc_data_loader.nextBatch()
 						summary, discLoss = self.discriminator.train(sess, post, reply, labels)
 						self.tensorboardWrite(writer, summary, TBDiscIter, writeToTensorboard)
@@ -277,13 +277,13 @@ class GANChat():
 						
 						#Discriminator
 						if adversarialIteration % ((self.discEpochSize//self.batch_size)*5) == 0: #Train 5 times on same disc epoch
-							self.disc_data_loader.createDataset(sess)
+							self.disc_data_loader.createDataset(sess, self.generator)
 						post, reply, labels = self.disc_data_loader.nextBatch()
 						summary, discLoss = self.discriminator.train(sess, post, reply, labels)
 						self.tensorboardWrite(writer, summary, TBDiscIter, writeToTensorboard)
 						TBDiscIter += 1
 
-						adversarialIteration = (adversarialIteration+1) % ((self.discEpochSize//self.batch_size)*5*15)
+						adversarialIteration = (adversarialIteration+1) % ((self.discEpochSize//self.batch_size)*5*15) #Train 15 times disc
 
 					lossTracker.log(genLoss, discLoss, iteration, self.data_loader.getEpochProgress())
 
