@@ -190,7 +190,7 @@ class GANChat():
 
 	def train(self):
 		tf.reset_default_graph()
-		self.batch_size = 64
+		self.batch_size = 32
 		self.tokenProcessor = TokenProcessor()
 		self.data_loader = DataLoader(self.batch_size)
 		self.sequence_length = self.data_loader.getSequenceLength()
@@ -206,7 +206,7 @@ class GANChat():
 		self.disc_data_loader = DiscDataLoader(self.data_loader, self.discEpochSize)
 
 		trainingMode = MODE.adversarialTraining
-		loadModel = False
+		loadModel = True
 		saveModel = True
 		evaluate = False
 		writeToTensorboard = False

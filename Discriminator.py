@@ -115,7 +115,7 @@ class Discriminator():
 		self.grad_clip = 5.0
 		self.l2_lambda = 0.2
 		self.filter_sizes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20]
-		self.num_filters = [200, 300, 300, 300, 300, 200, 200, 200, 200, 200, 200, 200]
+		self.num_filters = [200, 300, 300, 300, 300, 200, 200, 200, 200, 200, 260, 260]
 		self.scope_name = "discriminator"
 		self.buildGraph()
 
